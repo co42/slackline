@@ -4,10 +4,15 @@ use slack_cli::{Config, Output, SlackClient, commands};
 const ABOUT: &str = "Read-only Slack CLI for AI agents.
 
 WORKFLOW:
-  1. channels list -l 20      # Find channel ID (e.g., C1RCG46LS)
+  1. me channels              # List channels you're in
   2. channels history <ID>    # Read messages, note 'ts' for threads
   3. messages replies <ID> <TS>  # Read thread if reply_count > 0
-  4. users info <USER_ID>     # Look up who sent a message
+  4. search messages '<query>'   # Search (e.g., 'from:@user' or 'to:me')
+
+FIND MENTIONS:
+  search messages 'to:me'           # Messages sent to you
+  search messages 'from:@someone'   # Messages from someone
+  search messages 'in:#channel keyword'  # Keyword in channel
 
 Use --json for machine-readable output.";
 
@@ -53,6 +58,21 @@ enum Commands {
     Messages {
         #[command(subcommand)]
         command: MessageCommands,
+    },
+    /// Direct messages (IMs and group DMs)
+    Dms {
+        #[command(subcommand)]
+        command: DmCommands,
+    },
+    /// Current user shortcuts
+    Me {
+        #[command(subcommand)]
+        command: MeCommands,
+    },
+    /// Search messages across workspace
+    Search {
+        #[command(subcommand)]
+        command: SearchCommands,
     },
 }
 
@@ -134,6 +154,56 @@ enum MessageCommands {
     },
 }
 
+#[derive(Subcommand)]
+enum DmCommands {
+    /// List DM conversations (returns channel ID for each)
+    List {
+        /// Max DMs to return [default: 50]
+        #[arg(long, short)]
+        limit: Option<u16>,
+    },
+    /// Read DM history (use DM channel ID from 'dms list')
+    History {
+        /// DM channel ID (e.g., D01234567)
+        dm_channel: String,
+        /// Max messages to return [default: 20]
+        #[arg(long, short)]
+        limit: Option<u16>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MeCommands {
+    /// List channels you're a member of
+    Channels {
+        /// Max channels to return [default: 100]
+        #[arg(long, short)]
+        limit: Option<u16>,
+        /// Include DMs in the list
+        #[arg(long)]
+        dms: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SearchCommands {
+    /// Search messages (supports Slack search syntax)
+    ///
+    /// Examples:
+    ///   'to:me'              - Messages sent to you
+    ///   'from:@username'     - Messages from a user
+    ///   'in:#channel word'   - Word in specific channel
+    ///   'has:link'           - Messages with links
+    ///   'before:today'       - Messages before today
+    Messages {
+        /// Search query (Slack search syntax)
+        query: String,
+        /// Max results to return [default: 20]
+        #[arg(long, short)]
+        limit: Option<u16>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -181,6 +251,22 @@ async fn main() -> anyhow::Result<()> {
                 channel,
                 message_ts,
             } => commands::messages::permalink(&client, &output, &channel, &message_ts).await,
+        },
+        Commands::Dms { command } => match command {
+            DmCommands::List { limit } => commands::dms::list(&client, &output, limit).await,
+            DmCommands::History { dm_channel, limit } => {
+                commands::dms::history(&client, &output, &dm_channel, limit).await
+            }
+        },
+        Commands::Me { command } => match command {
+            MeCommands::Channels { limit, dms } => {
+                commands::me::channels(&client, &output, limit, dms).await
+            }
+        },
+        Commands::Search { command } => match command {
+            SearchCommands::Messages { query, limit } => {
+                commands::search::messages(&client, &output, &query, limit).await
+            }
         },
     };
 

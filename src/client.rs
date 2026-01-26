@@ -8,6 +8,7 @@ pub type HyperConnector = SlackClientHyperHttpsConnector;
 pub struct Client {
     inner: Arc<SlackHyperClient>,
     token: SlackApiToken,
+    token_str: String,
 }
 
 impl Client {
@@ -15,8 +16,18 @@ impl Client {
         let connector = SlackClientHyperHttpsConnector::new()?;
         let inner = Arc::new(slack_morphism::SlackClient::new(connector));
         let token = SlackApiToken::new(config.token.clone().into());
+        let token_str = config.token.clone();
 
-        Ok(Self { inner, token })
+        Ok(Self {
+            inner,
+            token,
+            token_str,
+        })
+    }
+
+    /// Get raw token string (for APIs not in slack-morphism)
+    pub fn token(&self) -> &str {
+        &self.token_str
     }
 
     pub fn session(&self) -> SlackClientSession<'_, HyperConnector> {
