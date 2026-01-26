@@ -1,5 +1,7 @@
 # slack-cli
 
+> **Note**: This project was generated with [Claude Code](https://claude.ai/code).
+
 Read-only Slack CLI for AI agents.
 
 ## Daily Summary Workflow
