@@ -1,4 +1,4 @@
-# slack-cli
+# slackline
 
 > **Note**: This project was generated with [Claude Code](https://claude.ai/code).
 
@@ -8,17 +8,17 @@ Read-only Slack CLI for AI agents.
 
 ```bash
 # Find what needs your attention today
-slack-cli search messages 'to:me after:yesterday' -l 30
-slack-cli search messages '@yourname after:yesterday' -l 20
+slackline search messages 'to:me after:yesterday' -l 30
+slackline search messages '@yourname after:yesterday' -l 20
 
 # Check messages you sent (for context)
-slack-cli search messages 'from:me after:yesterday' -l 20
+slackline search messages 'from:me after:yesterday' -l 20
 
 # Read a specific thread
-slack-cli messages replies <CHANNEL_ID> <THREAD_TS>
+slackline messages replies <CHANNEL_ID> <THREAD_TS>
 
 # Look up who sent a message
-slack-cli users info <USER_ID>
+slackline users info <USER_ID>
 ```
 
 ## Search Syntax (Most Useful)
@@ -39,40 +39,40 @@ slack-cli users info <USER_ID>
 
 ### Search (primary tool for agents)
 ```bash
-slack-cli search messages '<query>' -l 20
+slackline search messages '<query>' -l 20
 ```
 
 ### Channels
 ```bash
-slack-cli me channels                    # Channels you're in
-slack-cli channels list -l 50            # All public channels
-slack-cli channels history <ID> -l 20    # Read messages
-slack-cli channels info <ID>             # Channel details
-slack-cli channels members <ID>          # List members
+slackline me channels                    # Channels you're in
+slackline channels list -l 50            # All public channels
+slackline channels history <ID> -l 20    # Read messages
+slackline channels info <ID>             # Channel details
+slackline channels members <ID>          # List members
 ```
 
 ### Messages & Threads
 ```bash
-slack-cli messages replies <CH> <TS>     # Read thread
-slack-cli messages permalink <CH> <TS>   # Get URL
+slackline messages replies <CH> <TS>     # Read thread
+slackline messages permalink <CH> <TS>   # Get URL
 ```
 
 ### DMs
 ```bash
-slack-cli dms list                       # List DM conversations
-slack-cli dms history <DM_ID> -l 20      # Read DM history
+slackline dms list                       # List DM conversations
+slackline dms history <DM_ID> -l 20      # Read DM history
 ```
 
 ### Users
 ```bash
-slack-cli users list -l 50               # List users
-slack-cli users info <ID>                # User details
-slack-cli users presence <ID>            # Online/away
+slackline users list -l 50               # List users
+slackline users info <ID>                # User details
+slackline users presence <ID>            # Online/away
 ```
 
 ### Auth
 ```bash
-slack-cli auth test                      # Verify token
+slackline auth test                      # Verify token
 ```
 
 ## IDs and Timestamps
@@ -106,19 +106,19 @@ export SLACK_TOKEN="xoxp-..."
 
 ```bash
 # 1. Messages directed to you
-slack-cli search messages 'to:me after:yesterday' -l 30
+slackline search messages 'to:me after:yesterday' -l 30
 
 # 2. Mentions in channels
-slack-cli search messages '@yourname after:yesterday' -l 20
+slackline search messages '@yourname after:yesterday' -l 20
 
 # 3. Activity in key channels
-slack-cli search messages 'in:#infra after:yesterday' -l 15
-slack-cli search messages 'in:#team after:yesterday' -l 15
+slackline search messages 'in:#infra after:yesterday' -l 15
+slackline search messages 'in:#team after:yesterday' -l 15
 
 # 4. Read specific thread (from search results)
-slack-cli messages replies C03E4DQ9LAJ 1769427215.047649
+slackline messages replies C03E4DQ9LAJ 1769427215.047649
 
 # 5. Check DMs
-slack-cli dms list -l 10
-slack-cli dms history D05SGCF75MW -l 10
+slackline dms list -l 10
+slackline dms history D05SGCF75MW -l 10
 ```

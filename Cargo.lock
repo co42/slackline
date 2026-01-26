@@ -1749,26 +1749,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 
 [[package]]
-name = "slack-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "colored",
- "dotenvy",
- "hyper",
- "hyper-rustls",
- "reqwest",
- "serde",
- "serde_json",
- "slack-morphism",
- "thiserror 1.0.69",
- "tokio",
- "urlencoding",
-]
-
-[[package]]
 name = "slack-morphism"
 version = "2.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1808,6 +1788,26 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "slackline"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "colored",
+ "dotenvy",
+ "hyper",
+ "hyper-rustls",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "slack-morphism",
+ "thiserror 1.0.69",
+ "tokio",
+ "urlencoding",
 ]
 
 [[package]]

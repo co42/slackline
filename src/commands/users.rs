@@ -38,11 +38,10 @@ impl HumanReadable for UserInfo {
             .unwrap_or(&self.name);
 
         println!("@{} - {}{}", self.name.green(), display.bold(), status);
-        if let Some(title) = &self.title {
-            if !title.is_empty() {
+        if let Some(title) = &self.title
+            && !title.is_empty() {
                 println!("  {}", title.dimmed());
             }
-        }
         if let Some(email) = &self.email {
             println!("  {}", email.dimmed());
         }

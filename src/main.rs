@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use slack_cli::{Config, Output, SlackClient, commands};
+use slackline::{Config, Output, SlackClient, commands};
 
 const ABOUT: &str = "Read-only Slack CLI for AI agents.
 

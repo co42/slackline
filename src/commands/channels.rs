@@ -37,11 +37,10 @@ impl HumanReadable for ChannelInfo {
             members.dimmed(),
             archived
         );
-        if let Some(topic) = &self.topic {
-            if !topic.is_empty() {
+        if let Some(topic) = &self.topic
+            && !topic.is_empty() {
                 println!("  {}", topic.dimmed());
             }
-        }
     }
 }
 

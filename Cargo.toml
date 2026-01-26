@@ -1,5 +1,5 @@
 [package]
-name = "slack-cli"
+name = "slackline"
 version = "0.1.0"
 edition = "2024"
 
