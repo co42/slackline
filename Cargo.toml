@@ -4,36 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# Slack API client
-slack-morphism = { version = "2", features = ["hyper"] }
-
-# Async runtime
-tokio = { version = "1", features = ["full"] }
-
-# CLI argument parsing
-clap = { version = "4", features = ["derive", "env"] }
-
-# Error handling
 anyhow = "1"
-thiserror = "1"
-
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-# Terminal output
-colored = "2"
-
-# Date/time
 chrono = { version = "0.4", features = ["serde"] }
-
-# Environment variables
+clap = { version = "4", features = ["derive", "env"] }
+colored = "3"
 dotenvy = "0.15"
-
-# HTTP client (for slack-morphism)
 hyper = "1"
 hyper-rustls = { version = "0.27", features = ["http2"] }
-
-# HTTP client for search API (not in slack-morphism)
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+slack-morphism = { version = "2", features = ["hyper"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 urlencoding = "2"
