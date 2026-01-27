@@ -70,9 +70,11 @@ slackline users info <ID>                # User details
 slackline users presence <ID>            # Online/away
 ```
 
-### Auth
+### Token
 ```bash
-slackline auth test                      # Verify token
+slackline token test                     # Verify token works
+slackline token create                   # Instructions to create a token
+slackline token manifest                 # Print app manifest JSON
 ```
 
 ## IDs and Timestamps
@@ -90,16 +92,23 @@ slackline auth test                      # Verify token
 
 ## Token Setup
 
-Requires `xoxp-...` token with scopes:
-- `channels:read`, `channels:history`
-- `groups:read`, `groups:history`
-- `im:read`, `im:history`
-- `mpim:read`, `mpim:history`
-- `users:read`
-- `search:read`
+The easiest way to create a token:
 
 ```bash
+slackline token create
+```
+
+This prints a URL that opens Slack's app creation page with all required scopes pre-configured. Follow the steps to install the app and copy your token.
+
+Required scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `im:read`, `im:history`, `mpim:read`, `mpim:history`, `users:read`, `users:read.email`, `search:read`
+
+```bash
+# Set token via environment variable
 export SLACK_TOKEN="xoxp-..."
+
+# Or store in macOS Keychain (recommended)
+security add-generic-password -s slack-token -a $USER -w 'xoxp-...'
+export SLACK_TOKEN=$(security find-generic-password -s slack-token -w)
 ```
 
 ## Example: Daily Catch-up

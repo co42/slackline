@@ -15,7 +15,11 @@ pub struct Output {
 impl Output {
     pub fn new(json: bool, quiet: bool) -> Self {
         Self {
-            format: if json { OutputFormat::Json } else { OutputFormat::Human },
+            format: if json {
+                OutputFormat::Json
+            } else {
+                OutputFormat::Human
+            },
             quiet,
         }
     }
@@ -59,6 +63,10 @@ impl Output {
 
     pub fn error(&self, msg: &str) {
         eprintln!("{} {}", "✗".red(), msg);
+    }
+
+    pub fn is_json(&self) -> bool {
+        self.format == OutputFormat::Json
     }
 }
 
