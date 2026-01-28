@@ -1,33 +1,10 @@
 use clap::{Parser, Subcommand};
 use slackline::{Config, Output, SlackClient, commands};
 
-const ABOUT: &str = "Read-only Slack CLI for AI agents.
-
-SETUP:
-  token create                # Get URL to create a Slack app with required scopes
-  token test                  # Verify your token works
-
-WORKFLOW:
-  1. me channels              # List channels you're in
-  2. channels history <ID>    # Read messages, note 'ts' for threads
-  3. messages replies <ID> <TS>  # Read thread if reply_count > 0
-  4. search messages '<query>'   # Search (e.g., 'from:@user' or 'to:me')
-
-FIND MENTIONS:
-  search messages 'to:me'           # Messages sent to you
-  search messages 'from:@someone'   # Messages from someone
-  search messages 'in:#channel keyword'  # Keyword in channel
-
-FILES:
-  files list                        # List files in workspace
-  files list -u <USER_ID>           # Files uploaded by user
-  files info <FILE_ID>              # Get file metadata
-  files download <FILE_ID> -o file  # Download file
-
-Use --json for machine-readable output.";
+const ABOUT: &str = "Read-only Slack CLI for AI agents.";
 
 #[derive(Parser)]
-#[command(name = "slack-cli")]
+#[command(name = "slackline")]
 #[command(about = "Read-only Slack CLI for AI agents", long_about = ABOUT)]
 #[command(version)]
 struct Cli {
@@ -44,7 +21,7 @@ struct Cli {
     quiet: bool,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -257,8 +234,15 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let output = Output::new(cli.json, cli.quiet);
 
+    // Print help if no command provided
+    let Some(cmd) = cli.command else {
+        use clap::CommandFactory;
+        Cli::command().print_long_help()?;
+        return Ok(());
+    };
+
     // Handle token create/manifest commands (no auth required)
-    if let Commands::Token { command } = &cli.command {
+    if let Commands::Token { command } = &cmd {
         let result = match command {
             TokenCommands::Create => Some(commands::token::create(&output)),
             TokenCommands::Manifest => Some(commands::token::manifest(&output)),
@@ -280,7 +264,7 @@ async fn main() -> anyhow::Result<()> {
 
     let client = SlackClient::new(&config)?;
 
-    let result = match cli.command {
+    let result = match cmd {
         Commands::Token { command } => match command {
             TokenCommands::Test => commands::token::test(&client, &output).await,
             TokenCommands::Create | TokenCommands::Manifest => unreachable!(), // handled above

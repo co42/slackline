@@ -2,6 +2,7 @@
 
 VERSION ?= $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 HOMEBREW_TAP := ../homebrew-slackline
+REPO := co42/slackline
 
 build:
 	cargo build --release
@@ -16,7 +17,7 @@ release:
 	@if [ -z "$(VERSION)" ]; then echo "Could not determine version"; exit 1; fi
 	@if [ ! -d "$(HOMEBREW_TAP)" ]; then echo "Homebrew tap not found at $(HOMEBREW_TAP)"; exit 1; fi
 	@if git rev-parse "v$(VERSION)" >/dev/null 2>&1; then echo "Tag v$(VERSION) already exists"; exit 1; fi
-	@echo "Preparing release v$(VERSION)..."
+	@echo "=== Preparing release v$(VERSION) ==="
 	@# Update Cargo.toml version
 	@sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' Cargo.toml
 	@# Rebuild lock file
@@ -27,17 +28,33 @@ release:
 	@git tag "v$(VERSION)"
 	@git push && git push --tags
 	@echo ""
-	@echo "Waiting for GitHub to process the tag..."
-	@sleep 10
-	@# Get SHA256 of the release tarball
-	$(eval SHA256 := $(shell curl -sL https://github.com/co42/slackline/archive/refs/tags/v$(VERSION).tar.gz | shasum -a 256 | cut -d' ' -f1))
-	@echo "SHA256: $(SHA256)"
-	@# Update homebrew tap formula
-	@sed -i '' 's|archive/refs/tags/v[^"]*\.tar\.gz|archive/refs/tags/v$(VERSION).tar.gz|' $(HOMEBREW_TAP)/Formula/slackline.rb
-	@sed -i '' 's/sha256 ".*"/sha256 "$(SHA256)"/' $(HOMEBREW_TAP)/Formula/slackline.rb
+	@echo "=== Waiting for GitHub Actions to build release ==="
+	@echo "Watching workflow..."
+	@gh run watch -R $(REPO) --exit-status || (echo "Release build failed!" && exit 1)
+	@echo ""
+	@echo "=== Updating homebrew formula ==="
+	@# Get SHA256 for each platform from release assets
+	$(eval SHA_ARM := $(shell gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("aarch64-apple-darwin")) | .digest' | sed 's/sha256://'))
+	$(eval SHA_X86_MAC := $(shell gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("x86_64-apple-darwin")) | .digest' | sed 's/sha256://'))
+	$(eval SHA_LINUX := $(shell gh release view v$(VERSION) -R $(REPO) --json assets -q '.assets[] | select(.name | contains("x86_64-unknown-linux-gnu")) | .digest' | sed 's/sha256://'))
+	@echo "SHA256 aarch64-apple-darwin: $(SHA_ARM)"
+	@echo "SHA256 x86_64-apple-darwin:  $(SHA_X86_MAC)"
+	@echo "SHA256 x86_64-unknown-linux: $(SHA_LINUX)"
+	@# Update formula
+	@sed -i '' 's/version ".*"/version "$(VERSION)"/' $(HOMEBREW_TAP)/Formula/slackline.rb
+	@sed -i '' 's|/v[0-9.]*-aarch64-apple-darwin|/v$(VERSION)-aarch64-apple-darwin|g' $(HOMEBREW_TAP)/Formula/slackline.rb
+	@sed -i '' 's|/v[0-9.]*-x86_64-apple-darwin|/v$(VERSION)-x86_64-apple-darwin|g' $(HOMEBREW_TAP)/Formula/slackline.rb
+	@sed -i '' 's|/v[0-9.]*-x86_64-unknown-linux-gnu|/v$(VERSION)-x86_64-unknown-linux-gnu|g' $(HOMEBREW_TAP)/Formula/slackline.rb
+	@sed -i '' 's|download/v[^/]*/slackline|download/v$(VERSION)/slackline|g' $(HOMEBREW_TAP)/Formula/slackline.rb
+	@# Update SHAs (in order: arm, x86_mac, linux)
+	@awk -v arm="$(SHA_ARM)" -v x86="$(SHA_X86_MAC)" -v linux="$(SHA_LINUX)" \
+		'BEGIN{n=0} /sha256/{n++;if(n==1)sub(/sha256 "[^"]*"/,"sha256 \""arm"\"");if(n==2)sub(/sha256 "[^"]*"/,"sha256 \""x86"\"");if(n==3)sub(/sha256 "[^"]*"/,"sha256 \""linux"\"")} {print}' \
+		$(HOMEBREW_TAP)/Formula/slackline.rb > $(HOMEBREW_TAP)/Formula/slackline.rb.tmp
+	@mv $(HOMEBREW_TAP)/Formula/slackline.rb.tmp $(HOMEBREW_TAP)/Formula/slackline.rb
 	@# Commit and push homebrew tap
 	@cd $(HOMEBREW_TAP) && git add -A && git commit -m "slackline $(VERSION)" && git push
 	@echo ""
-	@echo "Release v$(VERSION) complete!"
+	@echo "=== Release v$(VERSION) complete! ==="
 	@echo "  - Tagged and pushed slackline"
+	@echo "  - GitHub Actions built binaries"
 	@echo "  - Updated and pushed homebrew-slackline"
