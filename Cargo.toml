@@ -2,6 +2,12 @@
 name = "slackline"
 version = "0.1.0"
 edition = "2024"
+description = "Read-only Slack CLI for AI agents"
+license = "MIT"
+repository = "https://github.com/co42/slackline"
+readme = "README.md"
+keywords = ["slack", "cli", "api"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1"
