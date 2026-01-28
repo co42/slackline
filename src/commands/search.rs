@@ -64,7 +64,7 @@ impl HumanReadable for SearchResult {
         println!("{} {} in #{}:", time.dimmed(), user.green(), channel.cyan());
         // Truncate long messages
         let text = if self.text.len() > 200 {
-            format!("{}...", &self.text[..200])
+            format!("{}...", &self.text[..self.text.floor_char_boundary(200)])
         } else {
             self.text.clone()
         };
