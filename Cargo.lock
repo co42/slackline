@@ -1696,7 +1696,7 @@ checksum = "7a2ae44ef20feb57a68b23d846850f861394c2e02dc425a50098ae8c90267589"
 [[package]]
 name = "slack-morphism"
 version = "2.17.0"
-source = "git+https://github.com/co42/slack-morphism-rust?branch=v2.17.0-files-api#e2d713693af60091b72e330dfbe0fff3a9048863"
+source = "git+https://github.com/co42/slack-morphism-rust?rev=e2d7136#e2d713693af60091b72e330dfbe0fff3a9048863"
 dependencies = [
  "async-recursion",
  "async-trait",

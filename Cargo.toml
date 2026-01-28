@@ -20,4 +20,4 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 urlencoding = "2"
 
 [patch.crates-io]
-slack-morphism = { git = "https://github.com/co42/slack-morphism-rust", branch = "v2.17.0-files-api" }
+slack-morphism = { git = "https://github.com/co42/slack-morphism-rust", rev = "e2d7136" }
