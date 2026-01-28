@@ -51,6 +51,7 @@ const APP_MANIFEST: &str = r##"{
       "user": [
         "channels:history",
         "channels:read",
+        "files:read",
         "groups:history",
         "groups:read",
         "im:history",
@@ -87,6 +88,7 @@ pub fn create(output: &Output) -> Result<()> {
             "scopes": [
                 "channels:history",
                 "channels:read",
+                "files:read",
                 "groups:history",
                 "groups:read",
                 "im:history",
@@ -130,8 +132,8 @@ pub fn create(output: &Output) -> Result<()> {
         println!();
         println!("{}", "─".repeat(60));
         println!("  Scopes included: channels:read, channels:history,");
-        println!("  groups:read/history, im:read/history, mpim:read/history,");
-        println!("  search:read, users:read, users:read.email");
+        println!("  files:read, groups:read/history, im:read/history,");
+        println!("  mpim:read/history, search:read, users:read, users:read.email");
         println!("{}", "─".repeat(60));
         println!();
     }

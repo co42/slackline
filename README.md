@@ -70,6 +70,15 @@ slackline users info <ID>                # User details
 slackline users presence <ID>            # Online/away
 ```
 
+### Files
+```bash
+slackline files list                     # List files in workspace
+slackline files list -c <CH_ID>          # Files in a channel
+slackline files list -u <USER_ID>        # Files by a user
+slackline files info <FILE_ID>           # File metadata
+slackline files download <FILE_ID> -o f  # Download to file
+```
+
 ### Token
 ```bash
 slackline token test                     # Verify token works
@@ -82,6 +91,7 @@ slackline token manifest                 # Print app manifest JSON
 - **Channel IDs**: `C...` (e.g., `C1RCG46LS`)
 - **DM IDs**: `D...` (e.g., `D032NSG9NAE`)
 - **User IDs**: `U...` (e.g., `U032LQBJTH8`)
+- **File IDs**: `F...` (e.g., `F0AB1G1EY5V`)
 - **Timestamps**: `1769415774.159039` (for threads/permalinks)
 
 ## Output Formats
@@ -100,7 +110,7 @@ slackline token create
 
 This prints a URL that opens Slack's app creation page with all required scopes pre-configured. Follow the steps to install the app and copy your token.
 
-Required scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `im:read`, `im:history`, `mpim:read`, `mpim:history`, `users:read`, `users:read.email`, `search:read`
+Required scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `im:read`, `im:history`, `mpim:read`, `mpim:history`, `users:read`, `users:read.email`, `search:read`, `files:read`
 
 ```bash
 # Set token via environment variable

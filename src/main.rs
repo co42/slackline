@@ -18,6 +18,12 @@ FIND MENTIONS:
   search messages 'from:@someone'   # Messages from someone
   search messages 'in:#channel keyword'  # Keyword in channel
 
+FILES:
+  files list                        # List files in workspace
+  files list -u <USER_ID>           # Files uploaded by user
+  files info <FILE_ID>              # Get file metadata
+  files download <FILE_ID> -o file  # Download file
+
 Use --json for machine-readable output.";
 
 #[derive(Parser)]
