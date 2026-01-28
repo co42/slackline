@@ -28,7 +28,7 @@ release:
 	@git push && git push --tags
 	@echo ""
 	@echo "Waiting for GitHub to process the tag..."
-	@sleep 3
+	@sleep 10
 	@# Get SHA256 of the release tarball
 	$(eval SHA256 := $(shell curl -sL https://github.com/co42/slackline/archive/refs/tags/v$(VERSION).tar.gz | shasum -a 256 | cut -d' ' -f1))
 	@echo "SHA256: $(SHA256)"
