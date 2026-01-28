@@ -44,9 +44,8 @@ release:
 		echo "SHA256 x86_64-apple-darwin:  $$SHA_X86_MAC" && \
 		echo "SHA256 x86_64-unknown-linux: $$SHA_LINUX" && \
 		sed -i '' 's/version ".*"/version "$(VERSION)"/' $(HOMEBREW_TAP)/Formula/slackline.rb && \
-		sed -i '' 's|/v[0-9.]*-aarch64-apple-darwin|/v$(VERSION)-aarch64-apple-darwin|g' $(HOMEBREW_TAP)/Formula/slackline.rb && \
-		sed -i '' 's|/v[0-9.]*-x86_64-apple-darwin|/v$(VERSION)-x86_64-apple-darwin|g' $(HOMEBREW_TAP)/Formula/slackline.rb && \
-		sed -i '' 's|/v[0-9.]*-x86_64-unknown-linux-gnu|/v$(VERSION)-x86_64-unknown-linux-gnu|g' $(HOMEBREW_TAP)/Formula/slackline.rb && \
+		sed -i '' 's|slackline-v[0-9.]*-aarch64|slackline-v$(VERSION)-aarch64|g' $(HOMEBREW_TAP)/Formula/slackline.rb && \
+		sed -i '' 's|slackline-v[0-9.]*-x86_64|slackline-v$(VERSION)-x86_64|g' $(HOMEBREW_TAP)/Formula/slackline.rb && \
 		sed -i '' 's|download/v[^/]*/slackline|download/v$(VERSION)/slackline|g' $(HOMEBREW_TAP)/Formula/slackline.rb && \
 		awk -v arm="$$SHA_ARM" -v x86="$$SHA_X86_MAC" -v linux="$$SHA_LINUX" \
 			'BEGIN{n=0} /sha256/{n++;if(n==1)sub(/sha256 "[^"]*"/,"sha256 \""arm"\"");if(n==2)sub(/sha256 "[^"]*"/,"sha256 \""x86"\"");if(n==3)sub(/sha256 "[^"]*"/,"sha256 \""linux"\"")} {print}' \
