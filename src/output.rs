@@ -61,6 +61,12 @@ impl Output {
         }
     }
 
+    pub fn status(&self, msg: &str) {
+        if !self.quiet && self.format == OutputFormat::Human {
+            eprintln!("{}", msg.dimmed());
+        }
+    }
+
     pub fn error(&self, msg: &str) {
         eprintln!("{} {}", "✗".red(), msg);
     }
