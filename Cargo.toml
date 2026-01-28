@@ -18,3 +18,6 @@ slack-morphism = { version = "2", features = ["hyper"] }
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 urlencoding = "2"
+
+[patch.crates-io]
+slack-morphism = { git = "https://github.com/co42/slack-morphism-rust", rev = "e2d7136" }
