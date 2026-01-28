@@ -29,8 +29,10 @@ release:
 	@git push && git push --tags
 	@echo ""
 	@echo "=== Waiting for GitHub Actions to build release ==="
-	@echo "Watching workflow..."
-	@gh run watch -R $(REPO) --exit-status || (echo "Release build failed!" && exit 1)
+	@# Get the run ID for this tag and watch it
+	$(eval RUN_ID := $(shell sleep 5 && gh run list -R $(REPO) --branch v$(VERSION) --limit 1 --json databaseId -q '.[0].databaseId'))
+	@echo "Watching workflow run $(RUN_ID)..."
+	@gh run watch $(RUN_ID) -R $(REPO) --exit-status || (echo "Release build failed!" && exit 1)
 	@echo ""
 	@echo "=== Updating homebrew formula ==="
 	@# Get SHA256 for each platform from release assets
