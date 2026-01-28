@@ -4,21 +4,17 @@
 
 Read-only Slack CLI for AI agents.
 
-## Daily Summary Workflow
+## Install
 
 ```bash
-# Find what needs your attention today
-slackline search messages 'to:me after:yesterday' -l 30
-slackline search messages '@yourname after:yesterday' -l 20
+# Homebrew (macOS)
+brew install co42/slackline/slackline
 
-# Check messages you sent (for context)
-slackline search messages 'from:me after:yesterday' -l 20
+# Cargo
+cargo install --git https://github.com/co42/slackline
 
-# Read a specific thread
-slackline messages replies <CHANNEL_ID> <THREAD_TS>
-
-# Look up who sent a message
-slackline users info <USER_ID>
+# Binary releases (macOS ARM, macOS Intel, Linux)
+# https://github.com/co42/slackline/releases
 ```
 
 ## Search Syntax (Most Useful)
