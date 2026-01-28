@@ -1743,6 +1743,7 @@ dependencies = [
  "clap",
  "colored",
  "dotenvy",
+ "futures",
  "hyper",
  "hyper-rustls",
  "reqwest",

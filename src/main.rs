@@ -197,6 +197,9 @@ enum MeCommands {
         /// Include DMs in the list
         #[arg(long)]
         dms: bool,
+        /// Only show channels with unread messages
+        #[arg(long, short)]
+        unread: bool,
     },
 }
 
@@ -322,8 +325,8 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Me { command } => match command {
-            MeCommands::Channels { limit, dms } => {
-                commands::me::channels(&client, &output, limit, dms).await
+            MeCommands::Channels { limit, dms, unread } => {
+                commands::me::channels(&client, &output, limit, dms, unread).await
             }
         },
         Commands::Search { command } => match command {

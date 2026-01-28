@@ -41,6 +41,8 @@ slackline search messages '<query>' -l 20
 ### Channels
 ```bash
 slackline me channels                    # Channels you're in
+slackline me channels --unread           # Channels with unread messages
+slackline me channels --unread --dms     # Include DMs with unreads
 slackline channels list -l 50            # All public channels
 slackline channels history <ID> -l 20    # Read messages
 slackline channels info <ID>             # Channel details
@@ -120,20 +122,23 @@ export SLACK_TOKEN=$(security find-generic-password -s slack-token -w)
 ## Example: Daily Catch-up
 
 ```bash
-# 1. Messages directed to you
+# 1. Channels with unread messages
+slackline me channels --unread
+
+# 2. Messages directed to you
 slackline search messages 'to:me after:yesterday' -l 30
 
-# 2. Mentions in channels
+# 3. Mentions in channels
 slackline search messages '@yourname after:yesterday' -l 20
 
-# 3. Activity in key channels
+# 4. Activity in key channels
 slackline search messages 'in:#infra after:yesterday' -l 15
 slackline search messages 'in:#team after:yesterday' -l 15
 
-# 4. Read specific thread (from search results)
+# 5. Read specific thread (from search results)
 slackline messages replies C03E4DQ9LAJ 1769427215.047649
 
-# 5. Check DMs
+# 6. Check DMs
 slackline dms list -l 10
 slackline dms history D05SGCF75MW -l 10
 ```
