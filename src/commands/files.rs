@@ -3,38 +3,16 @@ use crate::error::{Result, SlackCliError};
 use crate::output::{HumanReadable, Output};
 use chrono::{DateTime, Utc};
 use colored::Colorize;
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Deserialize)]
-struct FileInfoResponse {
-    ok: bool,
-    error: Option<String>,
-    file: Option<SlackFile>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SlackFile {
-    id: String,
-    name: String,
-    title: Option<String>,
-    mimetype: String,
-    filetype: String,
-    size: u64,
-    user: Option<String>,
-    timestamp: Option<i64>,
-    url_private: Option<String>,
-    url_private_download: Option<String>,
-    permalink: Option<String>,
-}
+use serde::Serialize;
+use slack_morphism::prelude::*;
 
 #[derive(Debug, Serialize)]
 pub struct FileInfo {
     pub id: String,
     pub name: String,
     pub title: Option<String>,
-    pub mimetype: String,
-    pub filetype: String,
-    pub size: u64,
+    pub mimetype: Option<String>,
+    pub filetype: Option<String>,
     pub user: Option<String>,
     pub url_private: Option<String>,
     pub url_private_download: Option<String>,
@@ -53,7 +31,9 @@ impl HumanReadable for FileInfo {
         let title = self.title.as_deref().unwrap_or(&self.name);
 
         println!("{} by {}", title.green().bold(), user.cyan());
-        println!("  {} | {} | {} bytes", self.filetype.yellow(), self.mimetype.dimmed(), self.size);
+        if let (Some(filetype), Some(mimetype)) = (&self.filetype, &self.mimetype) {
+            println!("  {} | {}", filetype.yellow(), mimetype.dimmed());
+        }
         println!("  Uploaded: {}", time.dimmed());
 
         if let Some(url) = &self.url_private_download {
@@ -69,104 +49,91 @@ impl HumanReadable for FileInfo {
     }
 }
 
+fn slack_file_to_info(file: SlackFile) -> FileInfo {
+    let timestamp = file.timestamp.map(|t| t.0);
+
+    FileInfo {
+        id: file.id.0,
+        name: file.name.unwrap_or_default(),
+        title: file.title,
+        mimetype: file.mimetype.map(|m| m.0),
+        filetype: file.filetype.map(|f| f.0),
+        user: file.user.map(|u| u.0),
+        url_private: file.url_private.map(|u| u.to_string()),
+        url_private_download: file.url_private_download.map(|u| u.to_string()),
+        permalink: file.permalink.map(|u| u.to_string()),
+        timestamp,
+    }
+}
+
 /// Get file info by ID
 pub async fn info(client: &Client, output: &Output, file_id: &str) -> Result<()> {
-    let token = client.token();
+    let session = client.session();
+    let request = SlackApiFilesInfoRequest::new(SlackFileId(file_id.to_string()));
 
-    let url = format!(
-        "https://slack.com/api/files.info?file={}",
-        urlencoding::encode(file_id)
-    );
-
-    let http_client = reqwest::Client::new();
-    let response = http_client
-        .get(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| SlackCliError::Api(e.to_string()))?;
-
-    let file_response: FileInfoResponse = response
-        .json()
-        .await
-        .map_err(|e| SlackCliError::Api(e.to_string()))?;
-
-    if !file_response.ok {
-        return Err(SlackCliError::Api(
-            file_response
-                .error
-                .unwrap_or_else(|| "Unknown error".to_string()),
-        ));
-    }
-
-    let file = file_response
-        .file
-        .ok_or_else(|| SlackCliError::Api("No file in response".to_string()))?;
-
-    let timestamp = file.timestamp.and_then(|ts| DateTime::from_timestamp(ts, 0));
-
-    let info = FileInfo {
-        id: file.id,
-        name: file.name,
-        title: file.title,
-        mimetype: file.mimetype,
-        filetype: file.filetype,
-        size: file.size,
-        user: file.user,
-        url_private: file.url_private,
-        url_private_download: file.url_private_download,
-        permalink: file.permalink,
-        timestamp,
-    };
+    let response = session.files_info(&request).await?;
+    let info = slack_file_to_info(response.file);
 
     output.print(&info);
 
     Ok(())
 }
 
-/// Download a file to stdout or a path
-pub async fn download(client: &Client, file_id: &str, output_path: Option<&str>) -> Result<()> {
-    let token = client.token();
+/// List files
+pub async fn list(
+    client: &Client,
+    output: &Output,
+    channel: Option<&str>,
+    user: Option<&str>,
+    limit: Option<u32>,
+) -> Result<()> {
+    let session = client.session();
 
-    // First get file info to get download URL
-    let url = format!(
-        "https://slack.com/api/files.info?file={}",
-        urlencoding::encode(file_id)
-    );
-
-    let http_client = reqwest::Client::new();
-    let response = http_client
-        .get(&url)
-        .header("Authorization", format!("Bearer {}", token))
-        .send()
-        .await
-        .map_err(|e| SlackCliError::Api(e.to_string()))?;
-
-    let file_response: FileInfoResponse = response
-        .json()
-        .await
-        .map_err(|e| SlackCliError::Api(e.to_string()))?;
-
-    if !file_response.ok {
-        return Err(SlackCliError::Api(
-            file_response
-                .error
-                .unwrap_or_else(|| "Unknown error".to_string()),
-        ));
+    let mut request = SlackApiFilesListRequest::new();
+    if let Some(ch) = channel {
+        request = request.with_channel(SlackChannelId(ch.to_string()));
+    }
+    if let Some(u) = user {
+        request = request.with_user(SlackUserId(u.to_string()));
+    }
+    if let Some(count) = limit {
+        request = request.with_count(count);
     }
 
-    let file = file_response
-        .file
-        .ok_or_else(|| SlackCliError::Api("No file in response".to_string()))?;
+    let response = session.files_list(&request).await?;
+
+    let files: Vec<FileInfo> = response.files.into_iter().map(slack_file_to_info).collect();
+
+    let title = match (channel, user) {
+        (Some(ch), Some(u)) => format!("Files in #{} by {}", ch, u),
+        (Some(ch), None) => format!("Files in #{}", ch),
+        (None, Some(u)) => format!("Files by {}", u),
+        (None, None) => "Files".to_string(),
+    };
+
+    output.print_list(&files, &title);
+
+    Ok(())
+}
+
+/// Download a file to stdout or a path
+pub async fn download(client: &Client, file_id: &str, output_path: Option<&str>) -> Result<()> {
+    let session = client.session();
+    let request = SlackApiFilesInfoRequest::new(SlackFileId(file_id.to_string()));
+
+    let response = session.files_info(&request).await?;
+    let file = response.file;
 
     let download_url = file
         .url_private_download
         .or(file.url_private)
         .ok_or_else(|| SlackCliError::Api("No download URL available".to_string()))?;
 
-    // Download the file
+    // Download the file using reqwest (slack-morphism doesn't have file download)
+    let token = client.token();
+    let http_client = reqwest::Client::new();
     let file_response = http_client
-        .get(&download_url)
+        .get(download_url.as_str())
         .header("Authorization", format!("Bearer {}", token))
         .send()
         .await
@@ -177,13 +144,14 @@ pub async fn download(client: &Client, file_id: &str, output_path: Option<&str>)
         .await
         .map_err(|e| SlackCliError::Api(e.to_string()))?;
 
+    let filename = file.name.unwrap_or_else(|| "file".to_string());
+
     match output_path {
         Some(path) => {
             std::fs::write(path, &bytes)?;
-            eprintln!("Downloaded {} to {}", file.name, path);
+            eprintln!("Downloaded {} to {}", filename, path);
         }
         None => {
-            // Write to stdout
             use std::io::Write;
             std::io::stdout().write_all(&bytes)?;
         }

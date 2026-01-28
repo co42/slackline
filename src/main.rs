@@ -177,6 +177,18 @@ enum DmCommands {
 
 #[derive(Subcommand)]
 enum FileCommands {
+    /// List files in workspace
+    List {
+        /// Filter by channel ID
+        #[arg(long, short)]
+        channel: Option<String>,
+        /// Filter by user ID
+        #[arg(long, short)]
+        user: Option<String>,
+        /// Max files to return [default: 100]
+        #[arg(long, short)]
+        limit: Option<u32>,
+    },
     /// Get file details by ID
     Info {
         /// File ID (e.g., F0AB1G1EY5V)
@@ -306,6 +318,14 @@ async fn main() -> anyhow::Result<()> {
             }
         },
         Commands::Files { command } => match command {
+            FileCommands::List {
+                channel,
+                user,
+                limit,
+            } => {
+                commands::files::list(&client, &output, channel.as_deref(), user.as_deref(), limit)
+                    .await
+            }
             FileCommands::Info { file } => commands::files::info(&client, &output, &file).await,
             FileCommands::Download { file, output: out } => {
                 commands::files::download(&client, &file, out.as_deref()).await
