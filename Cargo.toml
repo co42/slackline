@@ -1,6 +1,6 @@
 [package]
 name = "slackline"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 description = "Read-only Slack CLI for AI agents"
 license = "MIT"
