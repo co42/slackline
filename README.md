@@ -64,6 +64,7 @@ slackline dms history <DM_ID> -l 20      # Read DM history
 ### Users
 ```bash
 slackline users list -l 50               # List users
+slackline users search "peter"           # Search by name/email
 slackline users info <ID>                # User details
 slackline users presence <ID>            # Online/away
 ```

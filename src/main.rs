@@ -31,7 +31,7 @@ enum Commands {
         #[command(subcommand)]
         command: ChannelCommands,
     },
-    /// List users, get info and presence
+    /// List users, search by name/email, get info and presence
     Users {
         #[command(subcommand)]
         command: UserCommands,
@@ -111,6 +111,11 @@ enum UserCommands {
     Info {
         /// User ID (e.g., U032LQBJTH8)
         user: String,
+    },
+    /// Search users by name, username, or email
+    Search {
+        /// Search query (matches against name, username, email)
+        query: String,
     },
     /// Check if user is online or away
     Presence {
@@ -289,6 +294,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Users { command } => match command {
             UserCommands::List { limit } => commands::users::list(&client, &output, limit).await,
             UserCommands::Info { user } => commands::users::info(&client, &output, &user).await,
+            UserCommands::Search { query } => {
+                commands::users::search(&client, &output, &query).await
+            }
             UserCommands::Presence { user } => {
                 commands::users::presence(&client, &output, &user).await
             }
