@@ -16,6 +16,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 colored = "3"
 dotenvy = "0.15"
+futures = "0.3.32"
 hyper = "1"
 hyper-rustls = { version = "0.27", features = ["http2"] }
 reqwest = { version = "0.13", features = ["json"] }
