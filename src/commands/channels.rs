@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::output::{HumanReadable, Output};
 use chrono::{DateTime, Utc};
 use colored::Colorize;
+use futures::TryStreamExt;
 use serde::Serialize;
 use slack_morphism::prelude::*;
 
@@ -92,12 +93,17 @@ pub async fn list(client: &Client, output: &Output, limit: Option<u16>) -> Resul
 
     let request = SlackApiConversationsListRequest::new()
         .with_exclude_archived(true)
-        .with_limit(limit.unwrap_or(100));
+        .with_limit(limit.unwrap_or(200));
 
-    let response = session.conversations_list(&request).await?;
+    let mut all_channels: Vec<SlackChannelInfo> = Vec::new();
+    let scroller = request.scroller();
+    let mut stream = scroller.to_items_stream(&session);
 
-    let channels: Vec<ChannelInfo> = response
-        .channels
+    while let Some(batch) = stream.try_next().await? {
+        all_channels.extend(batch);
+    }
+
+    let channels: Vec<ChannelInfo> = all_channels
         .into_iter()
         .map(|c| ChannelInfo {
             id: c.id.0,
@@ -187,12 +193,17 @@ pub async fn members(
 
     let request = SlackApiConversationsMembersRequest::new()
         .with_channel(channel_id)
-        .with_limit(limit.unwrap_or(100));
+        .with_limit(limit.unwrap_or(200));
 
-    let response = session.conversations_members(&request).await?;
+    let mut all_members: Vec<SlackUserId> = Vec::new();
+    let scroller = request.scroller();
+    let mut stream = scroller.to_items_stream(&session);
 
-    let members: Vec<MemberInfo> = response
-        .members
+    while let Some(batch) = stream.try_next().await? {
+        all_members.extend(batch);
+    }
+
+    let members: Vec<MemberInfo> = all_members
         .into_iter()
         .map(|id| MemberInfo {
             id: id.0,
