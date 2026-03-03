@@ -39,9 +39,10 @@ impl HumanReadable for ChannelInfo {
             archived
         );
         if let Some(topic) = &self.topic
-            && !topic.is_empty() {
-                println!("  {}", topic.dimmed());
-            }
+            && !topic.is_empty()
+        {
+            println!("  {}", topic.dimmed());
+        }
     }
 }
 
@@ -105,11 +106,7 @@ impl HumanReadable for PinnedMessage {
             .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
             .unwrap_or_default();
 
-        println!(
-            "pinned by {} {}",
-            pinned_by.green(),
-            pinned_at.dimmed()
-        );
+        println!("pinned by {} {}", pinned_by.green(), pinned_at.dimmed());
         println!("  ts: {}", self.ts.dimmed());
         if !self.text.is_empty() {
             println!("  {}", self.text);

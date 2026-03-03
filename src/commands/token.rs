@@ -97,12 +97,12 @@ fn ro_manifest() -> String {
 }
 
 fn rw_manifest() -> String {
-    let all_scopes: Vec<&str> = READ_SCOPES.iter().chain(WRITE_SCOPES.iter()).copied().collect();
-    build_manifest(
-        "Slackline CLI",
-        "Slack CLI for AI agents",
-        &all_scopes,
-    )
+    let all_scopes: Vec<&str> = READ_SCOPES
+        .iter()
+        .chain(WRITE_SCOPES.iter())
+        .copied()
+        .collect();
+    build_manifest("Slackline CLI", "Slack CLI for AI agents", &all_scopes)
 }
 
 pub fn create(output: &Output, readonly: bool) -> Result<()> {
@@ -168,17 +168,11 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
         println!("   export SLACK_TOKEN='xoxp-...'");
         println!();
         println!("{}", "─".repeat(60));
-        println!(
-            "  Read scopes: channels, groups, im, mpim (read + history),"
-        );
-        println!(
-            "  files:read, search:read, users:read, users:read.email,"
-        );
+        println!("  Read scopes: channels, groups, im, mpim (read + history),");
+        println!("  files:read, search:read, users:read, users:read.email,");
         println!("  pins:read, reactions:read");
         if !readonly {
-            println!(
-                "  Write scopes: chat:write, files:write, im:write,"
-            );
+            println!("  Write scopes: chat:write, files:write, im:write,");
             println!("  pins:write, reactions:write, users.profile:write");
         }
         println!("{}", "─".repeat(60));

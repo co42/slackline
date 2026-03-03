@@ -344,24 +344,16 @@ const WRITE_ME_CMDS: &[&str] = &["set-status", "clear-status"];
 
 fn hide_write_subcommands(mut cmd: clap::Command) -> clap::Command {
     for name in WRITE_MESSAGE_CMDS {
-        cmd = cmd.mut_subcommand("messages", |m| {
-            m.mut_subcommand(name, |s| s.hide(true))
-        });
+        cmd = cmd.mut_subcommand("messages", |m| m.mut_subcommand(name, |s| s.hide(true)));
     }
     for name in WRITE_DM_CMDS {
-        cmd = cmd.mut_subcommand("dms", |m| {
-            m.mut_subcommand(name, |s| s.hide(true))
-        });
+        cmd = cmd.mut_subcommand("dms", |m| m.mut_subcommand(name, |s| s.hide(true)));
     }
     for name in WRITE_FILE_CMDS {
-        cmd = cmd.mut_subcommand("files", |m| {
-            m.mut_subcommand(name, |s| s.hide(true))
-        });
+        cmd = cmd.mut_subcommand("files", |m| m.mut_subcommand(name, |s| s.hide(true)));
     }
     for name in WRITE_ME_CMDS {
-        cmd = cmd.mut_subcommand("me", |m| {
-            m.mut_subcommand(name, |s| s.hide(true))
-        });
+        cmd = cmd.mut_subcommand("me", |m| m.mut_subcommand(name, |s| s.hide(true)));
     }
     cmd
 }
@@ -418,12 +410,8 @@ async fn main() -> anyhow::Result<()> {
     // Handle token create/manifest commands (no auth required)
     if let Commands::Token { command } = &cmd {
         let result = match command {
-            TokenCommands::Create { write } => {
-                Some(commands::token::create(&output, !write))
-            }
-            TokenCommands::Manifest { write } => {
-                Some(commands::token::manifest(&output, !write))
-            }
+            TokenCommands::Create { write } => Some(commands::token::create(&output, !write)),
+            TokenCommands::Manifest { write } => Some(commands::token::manifest(&output, !write)),
             TokenCommands::Test => None, // requires auth, handled below
         };
         if let Some(result) = result {

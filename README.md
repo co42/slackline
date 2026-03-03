@@ -147,6 +147,13 @@ security add-generic-password -s slack-token -a $USER -w 'xoxp-...'
 export SLACK_TOKEN=$(security find-generic-password -s slack-token -w)
 ```
 
+## Development
+
+```bash
+# Enable pre-commit hooks (fmt + clippy)
+git config core.hooksPath .githooks
+```
+
 ## Example: Daily Catch-up
 
 ```bash

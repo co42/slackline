@@ -132,12 +132,7 @@ pub async fn permalink(
 }
 
 /// Get reactions on a message
-pub async fn reactions(
-    client: &Client,
-    output: &Output,
-    channel: &str,
-    ts: &str,
-) -> Result<()> {
+pub async fn reactions(client: &Client, output: &Output, channel: &str, ts: &str) -> Result<()> {
     let session = client.session();
     let channel_id = SlackChannelId::new(channel.to_string());
     let timestamp = SlackTs::new(ts.to_string());
@@ -164,7 +159,10 @@ pub async fn reactions(
         SlackApiReactionsGetResponse::File(_) => vec![],
     };
 
-    output.print_list(&reactions, &format!("Reactions on message {} in {}", ts, channel));
+    output.print_list(
+        &reactions,
+        &format!("Reactions on message {} in {}", ts, channel),
+    );
 
     Ok(())
 }
@@ -245,12 +243,7 @@ pub async fn unreact(
 }
 
 /// Pin a message
-pub async fn pin(
-    client: &Client,
-    output: &Output,
-    channel: &str,
-    ts: &str,
-) -> Result<()> {
+pub async fn pin(client: &Client, output: &Output, channel: &str, ts: &str) -> Result<()> {
     let session = client.session();
     let channel_id = SlackChannelId::new(channel.to_string());
     let timestamp = SlackTs::new(ts.to_string());
@@ -264,12 +257,7 @@ pub async fn pin(
 }
 
 /// Unpin a message
-pub async fn unpin(
-    client: &Client,
-    output: &Output,
-    channel: &str,
-    ts: &str,
-) -> Result<()> {
+pub async fn unpin(client: &Client, output: &Output, channel: &str, ts: &str) -> Result<()> {
     let session = client.session();
     let channel_id = SlackChannelId::new(channel.to_string());
     let timestamp = SlackTs::new(ts.to_string());

@@ -187,8 +187,8 @@ pub async fn upload(
     let session = client.session();
 
     // Read the file
-    let file_bytes =
-        std::fs::read(path).map_err(|e| SlackCliError::Api(format!("Failed to read {}: {}", path, e)))?;
+    let file_bytes = std::fs::read(path)
+        .map_err(|e| SlackCliError::Api(format!("Failed to read {}: {}", path, e)))?;
     let filename = std::path::Path::new(path)
         .file_name()
         .and_then(|n| n.to_str())
@@ -207,20 +207,15 @@ pub async fn upload(
     let url_response = session.get_upload_url_external(&url_request).await?;
 
     // Step 2: Upload file bytes to the URL
-    let upload_request = SlackApiFilesUploadViaUrlRequest::new(
-        url_response.upload_url,
-        file_bytes,
-        content_type,
-    );
+    let upload_request =
+        SlackApiFilesUploadViaUrlRequest::new(url_response.upload_url, file_bytes, content_type);
     session.files_upload_via_url(&upload_request).await?;
 
     // Step 3: Complete the upload
     let file_complete = SlackApiFilesComplete::new(url_response.file_id.clone());
-    let mut complete_request =
-        SlackApiFilesCompleteUploadExternalRequest::new(vec![file_complete]);
+    let mut complete_request = SlackApiFilesCompleteUploadExternalRequest::new(vec![file_complete]);
     if let Some(ch) = channel {
-        complete_request =
-            complete_request.with_channel_id(SlackChannelId::new(ch.to_string()));
+        complete_request = complete_request.with_channel_id(SlackChannelId::new(ch.to_string()));
     }
     if let Some(ts) = thread_ts {
         complete_request = complete_request.with_thread_ts(SlackTs::new(ts.to_string()));

@@ -137,8 +137,7 @@ pub async fn send(client: &Client, output: &Output, user: &str, text: &str) -> R
     let user_id = SlackUserId::new(user.to_string());
 
     // Open a DM conversation with the user
-    let open_request = SlackApiConversationsOpenRequest::new()
-        .with_users(vec![user_id]);
+    let open_request = SlackApiConversationsOpenRequest::new().with_users(vec![user_id]);
     let open_response = session.conversations_open(&open_request).await?;
     let channel_id = open_response.channel.id;
 
