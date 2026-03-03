@@ -73,7 +73,7 @@ fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
 // Normalized output events
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct WatchEvent {
     pub ts: String,
     #[serde(rename = "type")]
@@ -112,6 +112,7 @@ struct WatchState {
     name_cache: Arc<RwLock<NameCache>>,
 }
 
+// TODO: cap cache size (LRU or periodic eviction) for long-running sessions
 #[derive(Debug, Default)]
 struct NameCache {
     users: HashMap<String, String>,
@@ -229,8 +230,6 @@ async fn normalize_event(
                 None
             };
 
-            let text = msg.content.as_ref().and_then(|c| c.text.clone());
-
             Some(WatchEvent {
                 ts,
                 event_type: event_type.to_string(),
@@ -238,15 +237,14 @@ async fn normalize_event(
                 channel_name,
                 user: user_id,
                 user_name,
-                text,
+                text: msg.content.as_ref().and_then(|c| c.text.clone()),
                 thread_ts: msg.origin.thread_ts.as_ref().map(slack_ts_to_string),
-                emoji: None,
-                item_ts: None,
-                file_id: None,
-                subtype: msg
-                    .subtype
-                    .as_ref()
-                    .map(|s| format!("{s:?}").to_lowercase()),
+                subtype: msg.subtype.as_ref().and_then(|s| {
+                    serde_json::to_value(s)
+                        .ok()
+                        .and_then(|v| v.as_str().map(String::from))
+                }),
+                ..Default::default()
             })
         }
 
@@ -263,50 +261,51 @@ async fn normalize_event(
                 user_name: resolve_user_name(cache, &session, &user_id).await,
                 text: mention.content.text.clone(),
                 thread_ts: mention.origin.thread_ts.as_ref().map(slack_ts_to_string),
-                emoji: None,
-                item_ts: None,
-                file_id: None,
-                subtype: None,
+                ..Default::default()
             })
         }
 
         SlackEventCallbackBody::ReactionAdded(reaction) => {
             let user_id = reaction.user.0.clone();
             let (channel, item_ts) = extract_reaction_item(&reaction.item);
+            let channel_name = if let Some(ref cid) = channel {
+                resolve_channel_name(cache, &session, cid).await
+            } else {
+                None
+            };
 
             Some(WatchEvent {
                 ts,
                 event_type: "reaction_added".to_string(),
                 channel,
-                channel_name: None,
+                channel_name,
                 user: Some(user_id.clone()),
                 user_name: resolve_user_name(cache, &session, &user_id).await,
-                text: None,
-                thread_ts: None,
                 emoji: Some(reaction.reaction.0.clone()),
                 item_ts,
-                file_id: None,
-                subtype: None,
+                ..Default::default()
             })
         }
 
         SlackEventCallbackBody::ReactionRemoved(reaction) => {
             let user_id = reaction.user.0.clone();
             let (channel, item_ts) = extract_reaction_item(&reaction.item);
+            let channel_name = if let Some(ref cid) = channel {
+                resolve_channel_name(cache, &session, cid).await
+            } else {
+                None
+            };
 
             Some(WatchEvent {
                 ts,
                 event_type: "reaction_removed".to_string(),
                 channel,
-                channel_name: None,
+                channel_name,
                 user: Some(user_id.clone()),
                 user_name: resolve_user_name(cache, &session, &user_id).await,
-                text: None,
-                thread_ts: None,
                 emoji: Some(reaction.reaction.0.clone()),
                 item_ts,
-                file_id: None,
-                subtype: None,
+                ..Default::default()
             })
         }
 
@@ -317,12 +316,7 @@ async fn normalize_event(
             channel_name: resolve_channel_name(cache, &session, &e.channel.0).await,
             user: Some(e.user.0.clone()),
             user_name: resolve_user_name(cache, &session, &e.user.0).await,
-            text: None,
-            thread_ts: None,
-            emoji: None,
-            item_ts: None,
-            file_id: None,
-            subtype: None,
+            ..Default::default()
         }),
 
         SlackEventCallbackBody::MemberLeftChannel(e) => Some(WatchEvent {
@@ -332,12 +326,7 @@ async fn normalize_event(
             channel_name: resolve_channel_name(cache, &session, &e.channel.0).await,
             user: Some(e.user.0.clone()),
             user_name: resolve_user_name(cache, &session, &e.user.0).await,
-            text: None,
-            thread_ts: None,
-            emoji: None,
-            item_ts: None,
-            file_id: None,
-            subtype: None,
+            ..Default::default()
         }),
 
         SlackEventCallbackBody::FileShared(e) => Some(WatchEvent {
@@ -347,19 +336,13 @@ async fn normalize_event(
             channel_name: resolve_channel_name(cache, &session, &e.channel_id.0).await,
             user: Some(e.user_id.0.clone()),
             user_name: resolve_user_name(cache, &session, &e.user_id.0).await,
-            text: None,
-            thread_ts: None,
-            emoji: None,
-            item_ts: None,
             file_id: Some(e.file_id.0.clone()),
-            subtype: None,
+            ..Default::default()
         }),
 
         SlackEventCallbackBody::UserStatusChanged(e) => Some(WatchEvent {
             ts,
             event_type: "status_changed".to_string(),
-            channel: None,
-            channel_name: None,
             user: Some(e.user.id.0.clone()),
             user_name: e.user.name.clone(),
             text: e
@@ -367,30 +350,18 @@ async fn normalize_event(
                 .profile
                 .as_ref()
                 .and_then(|p| p.status_text.clone()),
-            thread_ts: None,
             emoji: e
                 .user
                 .profile
                 .as_ref()
                 .and_then(|p| p.status_emoji.as_ref().map(|em| em.0.clone())),
-            item_ts: None,
-            file_id: None,
-            subtype: None,
+            ..Default::default()
         }),
 
         _ => Some(WatchEvent {
             ts,
             event_type: "unknown".to_string(),
-            channel: None,
-            channel_name: None,
-            user: None,
-            user_name: None,
-            text: None,
-            thread_ts: None,
-            emoji: None,
-            item_ts: None,
-            file_id: None,
-            subtype: None,
+            ..Default::default()
         }),
     }
 }
@@ -521,7 +492,13 @@ pub async fn listen(
         .map_err(|e| SlackCliError::Api(format!("failed to connect socket mode: {e}")))?;
 
     eprintln!("connected, streaming events... (ctrl-c to stop)");
-    socket_mode_listener.serve().await;
+
+    tokio::select! {
+        _ = socket_mode_listener.serve() => {}
+        _ = tokio::signal::ctrl_c() => {
+            eprintln!("interrupted, shutting down");
+        }
+    }
 
     Ok(())
 }

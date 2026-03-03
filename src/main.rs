@@ -72,7 +72,7 @@ enum Commands {
         /// Event types to stream (comma-separated: message,mention,reaction,dm,channel,file,member,status,all)
         #[arg(long, value_delimiter = ',', value_parser = parse_event_filter)]
         events: Vec<EventFilter>,
-        /// Filter to specific channel IDs (comma-separated)
+        /// Filter to specific channel IDs (comma-separated, e.g. C1RCG46LS,C0AB2G3EY)
         #[arg(long, value_delimiter = ',')]
         channels: Vec<String>,
         /// Output raw slack-morphism event JSON instead of normalized format
@@ -332,25 +332,32 @@ enum TokenCommands {
     /// Show instructions and URL to create a new Slack token (read-only by default)
     Create {
         /// Include write scopes (chat:write, files:write, etc.)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "watch")]
         write: bool,
         /// Create a Socket Mode app for `slackline watch` (includes bot + event subscriptions)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "write")]
         watch: bool,
     },
     /// Print the app manifest JSON (read-only by default)
     Manifest {
         /// Include write scopes (chat:write, files:write, etc.)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "watch")]
         write: bool,
         /// Print Socket Mode manifest for `slackline watch`
-        #[arg(long)]
+        #[arg(long, conflicts_with = "write")]
         watch: bool,
     },
 }
 
 fn parse_event_filter(s: &str) -> std::result::Result<EventFilter, String> {
     EventFilter::parse(s)
+}
+
+fn resolve_config(token: Option<String>) -> anyhow::Result<Config> {
+    Ok(match token {
+        Some(token) => Config::with_token(token),
+        None => Config::from_env()?,
+    })
 }
 
 fn is_readonly() -> bool {
@@ -461,10 +468,7 @@ async fn main() -> anyhow::Result<()> {
         raw,
     } = &cmd
     {
-        let config = match cli.token {
-            Some(token) => Config::with_token(token),
-            None => Config::from_env()?,
-        };
+        let config = resolve_config(cli.token)?;
         if let Err(e) = commands::watch::listen(&config, events, channels, *raw).await {
             output.error(&e.to_string());
             std::process::exit(1);
@@ -472,10 +476,7 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let config = match cli.token {
-        Some(token) => Config::with_token(token),
-        None => Config::from_env()?,
-    };
+    let config = resolve_config(cli.token)?;
 
     let client = SlackClient::new(&config)?;
 

@@ -26,9 +26,7 @@ impl Config {
     }
 
     pub fn with_token(token: String) -> Self {
-        Self {
-            token,
-            app_token: None,
-        }
+        let app_token = std::env::var("SLACK_APP_TOKEN").ok();
+        Self { token, app_token }
     }
 }
