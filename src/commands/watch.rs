@@ -112,7 +112,6 @@ struct WatchState {
     name_cache: Arc<RwLock<NameCache>>,
 }
 
-// TODO: cap cache size (LRU or periodic eviction) for long-running sessions
 #[derive(Debug, Default)]
 struct NameCache {
     users: HashMap<String, String>,
