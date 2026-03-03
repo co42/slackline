@@ -93,13 +93,35 @@ slackline me set-status "In a meeting" -e ":calendar:"     # Set status
 slackline me clear-status                                  # Clear status
 ```
 
+### Watch (Socket Mode event streaming)
+```bash
+slackline watch                                            # Stream all events (default: message,mention,dm,reaction)
+slackline watch --events all                               # Stream all event types
+slackline watch --events message,reaction                  # Only messages and reactions
+slackline watch --channels C1RCG46LS,C0AB2G3EY             # Filter to specific channels
+slackline watch --raw                                      # Output raw slack-morphism event JSON
+```
+
+Requires `SLACK_APP_TOKEN` (xapp-...) and `SLACK_TOKEN` (xoxb-...). Events stream as JSONL to stdout.
+
+**Quick setup:**
+```bash
+slackline token create --watch                             # Opens Slack with pre-configured manifest
+# Follow the steps, then:
+export SLACK_TOKEN='xoxb-...'                              # Bot token
+export SLACK_APP_TOKEN='xapp-...'                          # App-level token
+slackline watch
+```
+
 ### Token
 ```bash
 slackline token test                                       # Verify token works
 slackline token create                                     # Create read-only token
 slackline token create --write                             # Create token with write scopes
+slackline token create --watch                             # Create Socket Mode app for watch
 slackline token manifest                                   # Print read-only manifest
 slackline token manifest --write                           # Print manifest with write scopes
+slackline token manifest --watch                           # Print Socket Mode manifest
 ```
 
 ## Read-only Mode

@@ -1,5 +1,6 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use slackline::{Config, Output, SlackClient, commands};
+use slackline::commands::watch::EventFilter;
 
 const ABOUT: &str = "Slack CLI for AI agents.";
 
@@ -65,6 +66,18 @@ enum Commands {
     Token {
         #[command(subcommand)]
         command: TokenCommands,
+    },
+    /// Stream real-time events via Socket Mode (JSONL to stdout)
+    Watch {
+        /// Event types to stream (comma-separated: message,mention,reaction,dm,channel,file,member,status,all)
+        #[arg(long, value_delimiter = ',', value_parser = parse_event_filter)]
+        events: Vec<EventFilter>,
+        /// Filter to specific channel IDs (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        channels: Vec<String>,
+        /// Output raw slack-morphism event JSON instead of normalized format
+        #[arg(long)]
+        raw: bool,
     },
 }
 
@@ -321,13 +334,23 @@ enum TokenCommands {
         /// Include write scopes (chat:write, files:write, etc.)
         #[arg(long)]
         write: bool,
+        /// Create a Socket Mode app for `slackline watch` (includes bot + event subscriptions)
+        #[arg(long)]
+        watch: bool,
     },
     /// Print the app manifest JSON (read-only by default)
     Manifest {
         /// Include write scopes (chat:write, files:write, etc.)
         #[arg(long)]
         write: bool,
+        /// Print Socket Mode manifest for `slackline watch`
+        #[arg(long)]
+        watch: bool,
     },
+}
+
+fn parse_event_filter(s: &str) -> std::result::Result<EventFilter, String> {
+    EventFilter::parse(s)
 }
 
 fn is_readonly() -> bool {
@@ -410,8 +433,16 @@ async fn main() -> anyhow::Result<()> {
     // Handle token create/manifest commands (no auth required)
     if let Commands::Token { command } = &cmd {
         let result = match command {
-            TokenCommands::Create { write } => Some(commands::token::create(&output, !write)),
-            TokenCommands::Manifest { write } => Some(commands::token::manifest(&output, !write)),
+            TokenCommands::Create { watch: true, .. } => {
+                Some(commands::token::create_watch(&output))
+            }
+            TokenCommands::Create { write, .. } => Some(commands::token::create(&output, !write)),
+            TokenCommands::Manifest { watch: true, .. } => {
+                Some(commands::token::manifest_watch(&output))
+            }
+            TokenCommands::Manifest { write, .. } => {
+                Some(commands::token::manifest(&output, !write))
+            }
             TokenCommands::Test => None, // requires auth, handled below
         };
         if let Some(result) = result {
@@ -421,6 +452,24 @@ async fn main() -> anyhow::Result<()> {
             }
             return Ok(());
         }
+    }
+
+    // Handle watch command (needs config but not the usual client)
+    if let Commands::Watch {
+        events,
+        channels,
+        raw,
+    } = &cmd
+    {
+        let config = match cli.token {
+            Some(token) => Config::with_token(token),
+            None => Config::from_env()?,
+        };
+        if let Err(e) = commands::watch::listen(&config, events, channels, *raw).await {
+            output.error(&e.to_string());
+            std::process::exit(1);
+        }
+        return Ok(());
     }
 
     let config = match cli.token {
@@ -549,6 +598,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::search::messages(&client, &output, &query, limit).await
             }
         },
+        Commands::Watch { .. } => unreachable!("handled above"),
     };
 
     if let Err(e) = result {

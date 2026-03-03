@@ -181,6 +181,155 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
     Ok(())
 }
 
+const WATCH_BOT_SCOPES: &[&str] = &[
+    "app_mentions:read",
+    "channels:history",
+    "channels:read",
+    "groups:history",
+    "groups:read",
+    "im:history",
+    "im:read",
+    "mpim:history",
+    "mpim:read",
+    "reactions:read",
+    "users:read",
+    "users:read.email",
+    "files:read",
+];
+
+const WATCH_EVENT_SUBSCRIPTIONS: &[&str] = &[
+    "app_mention",
+    "message.channels",
+    "message.groups",
+    "message.im",
+    "message.mpim",
+    "reaction_added",
+    "reaction_removed",
+    "member_joined_channel",
+    "member_left_channel",
+    "file_shared",
+    "user_status_changed",
+    "channel_created",
+    "channel_deleted",
+    "channel_archive",
+    "channel_unarchive",
+    "channel_rename",
+    "team_join",
+];
+
+fn watch_manifest() -> String {
+    let manifest = serde_json::json!({
+        "display_information": {
+            "name": "Slackline Watch",
+            "description": "Socket Mode event streaming for slackline CLI",
+            "background_color": "#4a154b"
+        },
+        "features": {
+            "bot_user": {
+                "display_name": "Slackline Watch",
+                "always_online": false
+            }
+        },
+        "oauth_config": {
+            "scopes": {
+                "bot": WATCH_BOT_SCOPES
+            }
+        },
+        "settings": {
+            "event_subscriptions": {
+                "bot_events": WATCH_EVENT_SUBSCRIPTIONS
+            },
+            "org_deploy_enabled": false,
+            "socket_mode_enabled": true,
+            "token_rotation_enabled": false
+        }
+    });
+
+    serde_json::to_string_pretty(&manifest).unwrap()
+}
+
+pub fn create_watch(output: &Output) -> Result<()> {
+    let manifest = watch_manifest();
+    let encoded = urlencoding::encode(&manifest);
+    let url = format!(
+        "https://api.slack.com/apps?new_app=1&manifest_json={}",
+        encoded
+    );
+
+    if output.is_json() {
+        let manifest_value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+        let info = serde_json::json!({
+            "mode": "watch",
+            "steps": [
+                "Open the Slack app creation URL",
+                "Select your workspace",
+                "Click 'Create' to create the app from manifest",
+                "Go to 'Basic Information' → 'App-Level Tokens'",
+                "Click 'Generate Token and Scopes'",
+                "Name it (e.g. 'socket') and add the 'connections:write' scope",
+                "Copy the token (starts with xapp-)",
+                "Go to 'Install App' and install to your workspace",
+                "Copy the 'Bot User OAuth Token' (starts with xoxb-) as your SLACK_TOKEN",
+                "Store both tokens securely"
+            ],
+            "create_url": url,
+            "manifest": manifest_value,
+        });
+        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+    } else {
+        println!();
+        println!("{}", "═".repeat(60));
+        println!("  CREATE A SOCKET MODE APP FOR SLACKLINE WATCH");
+        println!("{}", "═".repeat(60));
+        println!();
+        println!("1. Open this URL to create a Slack app with Socket Mode:");
+        println!();
+        println!("   {}", url);
+        println!();
+        println!("2. Select your workspace and click 'Create'");
+        println!();
+        println!("3. Go to 'Basic Information' → 'App-Level Tokens'");
+        println!("   Click 'Generate Token and Scopes'");
+        println!("   Name: socket  |  Scope: connections:write");
+        println!("   Copy the token (starts with xapp-)");
+        println!();
+        println!("4. Go to 'Install App' → 'Install to Workspace'");
+        println!("   Copy the 'Bot User OAuth Token' (starts with xoxb-)");
+        println!();
+        println!("5. Store both tokens:");
+        println!();
+        println!("   export SLACK_TOKEN='xoxb-...'        # Bot token (API lookups)");
+        println!("   export SLACK_APP_TOKEN='xapp-...'     # App token (Socket Mode)");
+        println!();
+        println!("6. Invite the bot to channels you want to watch:");
+        println!("   /invite @Slackline Watch");
+        println!();
+        println!("7. Start streaming:");
+        println!("   slackline watch");
+        println!();
+        println!("{}", "─".repeat(60));
+        println!("  Bot scopes: channels/groups/im/mpim (read + history),");
+        println!("  app_mentions:read, reactions:read, users:read, files:read");
+        println!("  Events: messages, reactions, mentions, members, files,");
+        println!("  channels, user status, team join");
+        println!("{}", "─".repeat(60));
+        println!();
+    }
+    Ok(())
+}
+
+pub fn manifest_watch(output: &Output) -> Result<()> {
+    let manifest = watch_manifest();
+
+    if output.is_json() {
+        let value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
+        println!("{}", serde_json::to_string_pretty(&value).unwrap());
+    } else {
+        println!("{}", manifest);
+    }
+    Ok(())
+}
+
 pub fn manifest(output: &Output, readonly: bool) -> Result<()> {
     let manifest = if readonly {
         ro_manifest()
