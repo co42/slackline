@@ -114,3 +114,48 @@ pub async fn history(
 
     Ok(())
 }
+
+#[derive(Debug, Serialize)]
+pub struct SentDm {
+    pub channel: String,
+    pub ts: String,
+    pub user: String,
+    pub text: String,
+}
+
+impl HumanReadable for SentDm {
+    fn print_human(&self) {
+        println!("{} to {}", "DM sent".green(), self.user);
+        println!("  channel: {}", self.channel.dimmed());
+        println!("  ts: {}", self.ts.dimmed());
+    }
+}
+
+/// Send a DM to a user (opens conversation first)
+pub async fn send(client: &Client, output: &Output, user: &str, text: &str) -> Result<()> {
+    let session = client.session();
+    let user_id = SlackUserId::new(user.to_string());
+
+    // Open a DM conversation with the user
+    let open_request = SlackApiConversationsOpenRequest::new()
+        .with_users(vec![user_id]);
+    let open_response = session.conversations_open(&open_request).await?;
+    let channel_id = open_response.channel.id;
+
+    // Send the message
+    let content = SlackMessageContent::new().with_text(text.to_string());
+    let msg_request = SlackApiChatPostMessageRequest::new(channel_id.clone(), content);
+    let msg_response = session.chat_post_message(&msg_request).await?;
+
+    let sent = SentDm {
+        channel: channel_id.0,
+        ts: msg_response.ts.0,
+        user: user.to_string(),
+        text: text.to_string(),
+    };
+
+    output.print(&sent);
+    output.success("DM sent");
+
+    Ok(())
+}

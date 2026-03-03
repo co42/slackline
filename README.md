@@ -2,7 +2,7 @@
 
 > **Note**: This project was generated with [Claude Code](https://claude.ai/code).
 
-Read-only Slack CLI for AI agents.
+Slack CLI for AI agents.
 
 ## Install
 
@@ -47,18 +47,27 @@ slackline channels list -l 50            # All public channels
 slackline channels history <ID> -l 20    # Read messages
 slackline channels info <ID>             # Channel details
 slackline channels members <ID>          # List members
+slackline channels pins <ID>             # List pinned messages
 ```
 
 ### Messages & Threads
 ```bash
 slackline messages replies <CH> <TS>     # Read thread
 slackline messages permalink <CH> <TS>   # Get URL
+slackline messages reactions <CH> <TS>   # Get reactions on a message
+slackline messages send <CH> "text"      # Send a message
+slackline messages send <CH> "text" --thread-ts <TS>  # Reply in thread
+slackline messages react <CH> <TS> thumbsup    # Add reaction
+slackline messages unreact <CH> <TS> thumbsup  # Remove reaction
+slackline messages pin <CH> <TS>         # Pin a message
+slackline messages unpin <CH> <TS>       # Unpin a message
 ```
 
 ### DMs
 ```bash
 slackline dms list                       # List DM conversations
 slackline dms history <DM_ID> -l 20      # Read DM history
+slackline dms send <USER_ID> "text"      # Send a DM
 ```
 
 ### Users
@@ -76,13 +85,31 @@ slackline files list -c <CH_ID>          # Files in a channel
 slackline files list -u <USER_ID>        # Files by a user
 slackline files info <FILE_ID>           # File metadata
 slackline files download <FILE_ID> -o f  # Download to file
+slackline files upload ./report.pdf -c <CH_ID>              # Upload to channel
+slackline files upload ./img.png -c <CH_ID> --comment "FYI" # Upload with comment
+```
+
+### Status
+```bash
+slackline me set-status "In a meeting" -e ":calendar:"  # Set status
+slackline me clear-status                                # Clear status
 ```
 
 ### Token
 ```bash
 slackline token test                     # Verify token works
-slackline token create                   # Instructions to create a token
-slackline token manifest                 # Print app manifest JSON
+slackline token create                   # Create read-only token (default)
+slackline token create --write       # Create token with write scopes
+slackline token manifest                 # Print read-only manifest
+slackline token manifest --write     # Print manifest with write scopes
+```
+
+## Read-only Mode
+
+Set `SLACKLINE_READONLY` to disable all write operations. Write commands are hidden from help and return an error if invoked directly.
+
+```bash
+export SLACKLINE_READONLY=1
 ```
 
 ## IDs and Timestamps
@@ -109,7 +136,9 @@ slackline token create
 
 This prints a URL that opens Slack's app creation page with all required scopes pre-configured. Follow the steps to install the app and copy your token.
 
-Required scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `im:read`, `im:history`, `mpim:read`, `mpim:history`, `users:read`, `users:read.email`, `search:read`, `files:read`
+Read scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `im:read`, `im:history`, `mpim:read`, `mpim:history`, `users:read`, `users:read.email`, `search:read`, `files:read`, `pins:read`, `reactions:read`
+
+Write scopes: `chat:write`, `files:write`, `im:write`, `pins:write`, `reactions:write`, `users.profile:write`
 
 ```bash
 # Set token via environment variable

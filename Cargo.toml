@@ -2,7 +2,7 @@
 name = "slackline"
 version = "0.5.0"
 edition = "2024"
-description = "Read-only Slack CLI for AI agents"
+description = "Slack CLI for AI agents"
 license = "MIT"
 repository = "https://github.com/co42/slackline"
 readme = "README.md"
@@ -17,6 +17,7 @@ clap = { version = "4", features = ["derive", "env"] }
 colored = "3"
 dotenvy = "0.15"
 hyper = "1"
+mime_guess = "2"
 hyper-rustls = { version = "0.27", features = ["http2"] }
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
