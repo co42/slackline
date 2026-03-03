@@ -1,6 +1,6 @@
 [package]
 name = "slackline"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 description = "Read-only Slack CLI for AI agents"
 license = "MIT"
@@ -16,7 +16,6 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
 colored = "3"
 dotenvy = "0.15"
-futures = "0.3.32"
 hyper = "1"
 hyper-rustls = { version = "0.27", features = ["http2"] }
 reqwest = { version = "0.13", features = ["json"] }
