@@ -49,6 +49,21 @@ impl HumanReadable for FileInfo {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct UploadedFile {
+    pub id: String,
+    pub name: String,
+    pub size: u64,
+}
+
+impl HumanReadable for UploadedFile {
+    fn print_human(&self) {
+        println!("{} {}", "Uploaded".green(), self.name.bold());
+        println!("  id: {}", self.id.dimmed());
+        println!("  size: {} bytes", self.size);
+    }
+}
+
 fn slack_file_to_info(file: SlackFile) -> FileInfo {
     let timestamp = file.timestamp.map(|t| t.0);
 
@@ -156,6 +171,70 @@ pub async fn download(client: &Client, file_id: &str, output_path: Option<&str>)
             std::io::stdout().write_all(&bytes)?;
         }
     }
+
+    Ok(())
+}
+
+/// Upload a file to Slack (3-step upload flow)
+pub async fn upload(
+    client: &Client,
+    output: &Output,
+    path: &str,
+    channel: Option<&str>,
+    thread_ts: Option<&str>,
+    comment: Option<&str>,
+) -> Result<()> {
+    let session = client.session();
+
+    // Read the file
+    let file_bytes = std::fs::read(path)
+        .map_err(|e| SlackCliError::Api(format!("Failed to read {}: {}", path, e)))?;
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string();
+    let file_size = file_bytes.len() as u64;
+
+    // Detect content type
+    let content_type = mime_guess::from_path(path)
+        .first_or_octet_stream()
+        .to_string();
+
+    // Step 1: Get upload URL
+    let url_request =
+        SlackApiFilesGetUploadUrlExternalRequest::new(filename.clone(), file_size as usize);
+    let url_response = session.get_upload_url_external(&url_request).await?;
+
+    // Step 2: Upload file bytes to the URL
+    let upload_request =
+        SlackApiFilesUploadViaUrlRequest::new(url_response.upload_url, file_bytes, content_type);
+    session.files_upload_via_url(&upload_request).await?;
+
+    // Step 3: Complete the upload
+    let file_complete = SlackApiFilesComplete::new(url_response.file_id.clone());
+    let mut complete_request = SlackApiFilesCompleteUploadExternalRequest::new(vec![file_complete]);
+    if let Some(ch) = channel {
+        complete_request = complete_request.with_channel_id(SlackChannelId::new(ch.to_string()));
+    }
+    if let Some(ts) = thread_ts {
+        complete_request = complete_request.with_thread_ts(SlackTs::new(ts.to_string()));
+    }
+    if let Some(c) = comment {
+        complete_request = complete_request.with_initial_comment(c.to_string());
+    }
+    session
+        .files_complete_upload_external(&complete_request)
+        .await?;
+
+    let uploaded = UploadedFile {
+        id: url_response.file_id.0,
+        name: filename,
+        size: file_size,
+    };
+
+    output.print(&uploaded);
+    output.success("File uploaded");
 
     Ok(())
 }

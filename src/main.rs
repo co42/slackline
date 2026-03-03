@@ -1,11 +1,11 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use slackline::{Config, Output, SlackClient, commands};
 
-const ABOUT: &str = "Read-only Slack CLI for AI agents.";
+const ABOUT: &str = "Slack CLI for AI agents.";
 
 #[derive(Parser)]
 #[command(name = "slackline")]
-#[command(about = "Read-only Slack CLI for AI agents", long_about = ABOUT)]
+#[command(about = "Slack CLI for AI agents", long_about = ABOUT)]
 #[command(version)]
 struct Cli {
     /// Slack token (or set SLACK_TOKEN env var)
@@ -26,7 +26,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// List channels, read messages, get members
+    /// List channels, read messages, get members, list pins
     Channels {
         #[command(subcommand)]
         command: ChannelCommands,
@@ -36,7 +36,7 @@ enum Commands {
         #[command(subcommand)]
         command: UserCommands,
     },
-    /// Read thread replies, get permalinks
+    /// Read threads, send messages, react, pin
     Messages {
         #[command(subcommand)]
         command: MessageCommands,
@@ -46,7 +46,7 @@ enum Commands {
         #[command(subcommand)]
         command: DmCommands,
     },
-    /// File operations (info, download)
+    /// File operations (info, download, upload)
     Files {
         #[command(subcommand)]
         command: FileCommands,
@@ -97,6 +97,11 @@ enum ChannelCommands {
         #[arg(long, short)]
         limit: Option<u16>,
     },
+    /// List pinned messages in channel
+    Pins {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -143,6 +148,55 @@ enum MessageCommands {
         /// Message timestamp (e.g., 1769415774.159039)
         message_ts: String,
     },
+    /// Get reactions on a message
+    Reactions {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+        /// Message timestamp (e.g., 1769415774.159039)
+        ts: String,
+    },
+    /// Send a message to a channel
+    Send {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+        /// Message text
+        text: String,
+        /// Reply in thread (parent message timestamp)
+        #[arg(long)]
+        thread_ts: Option<String>,
+    },
+    /// Add an emoji reaction to a message
+    React {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+        /// Message timestamp (e.g., 1769415774.159039)
+        ts: String,
+        /// Emoji name without colons (e.g., thumbsup)
+        emoji: String,
+    },
+    /// Remove an emoji reaction from a message
+    Unreact {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+        /// Message timestamp (e.g., 1769415774.159039)
+        ts: String,
+        /// Emoji name without colons (e.g., thumbsup)
+        emoji: String,
+    },
+    /// Pin a message to a channel
+    Pin {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+        /// Message timestamp (e.g., 1769415774.159039)
+        ts: String,
+    },
+    /// Unpin a message from a channel
+    Unpin {
+        /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+        /// Message timestamp (e.g., 1769415774.159039)
+        ts: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -160,6 +214,13 @@ enum DmCommands {
         /// Max messages to return [default: 20]
         #[arg(long, short)]
         limit: Option<u16>,
+    },
+    /// Send a direct message to a user
+    Send {
+        /// User ID (e.g., U032LQBJTH8)
+        user: String,
+        /// Message text
+        text: String,
     },
 }
 
@@ -190,6 +251,20 @@ enum FileCommands {
         #[arg(long, short)]
         output: Option<String>,
     },
+    /// Upload a file to Slack
+    Upload {
+        /// Path to file on disk
+        path: String,
+        /// Channel to share to (optional)
+        #[arg(long, short)]
+        channel: Option<String>,
+        /// Thread timestamp to post in (optional)
+        #[arg(long)]
+        thread_ts: Option<String>,
+        /// Initial comment when sharing (optional)
+        #[arg(long)]
+        comment: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -206,6 +281,16 @@ enum MeCommands {
         #[arg(long, short)]
         unread: bool,
     },
+    /// Set your Slack status
+    SetStatus {
+        /// Status text
+        text: String,
+        /// Status emoji (e.g., :coffee:) [default: :speech_balloon:]
+        #[arg(long, short)]
+        emoji: Option<String>,
+    },
+    /// Clear your Slack status
+    ClearStatus,
 }
 
 #[derive(Subcommand)]
@@ -231,29 +316,102 @@ enum SearchCommands {
 enum TokenCommands {
     /// Test token and show workspace/user info
     Test,
-    /// Show instructions and URL to create a new Slack token
-    Create,
-    /// Print the app manifest JSON
-    Manifest,
+    /// Show instructions and URL to create a new Slack token (read-only by default)
+    Create {
+        /// Include write scopes (chat:write, files:write, etc.)
+        #[arg(long)]
+        write: bool,
+    },
+    /// Print the app manifest JSON (read-only by default)
+    Manifest {
+        /// Include write scopes (chat:write, files:write, etc.)
+        #[arg(long)]
+        write: bool,
+    },
+}
+
+fn is_readonly() -> bool {
+    std::env::var("SLACKLINE_READONLY")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+}
+
+/// Names of write subcommands that should be hidden in readonly mode
+const WRITE_MESSAGE_CMDS: &[&str] = &["send", "react", "unreact", "pin", "unpin"];
+const WRITE_DM_CMDS: &[&str] = &["send"];
+const WRITE_FILE_CMDS: &[&str] = &["upload"];
+const WRITE_ME_CMDS: &[&str] = &["set-status", "clear-status"];
+
+fn hide_write_subcommands(mut cmd: clap::Command) -> clap::Command {
+    for name in WRITE_MESSAGE_CMDS {
+        cmd = cmd.mut_subcommand("messages", |m| m.mut_subcommand(name, |s| s.hide(true)));
+    }
+    for name in WRITE_DM_CMDS {
+        cmd = cmd.mut_subcommand("dms", |m| m.mut_subcommand(name, |s| s.hide(true)));
+    }
+    for name in WRITE_FILE_CMDS {
+        cmd = cmd.mut_subcommand("files", |m| m.mut_subcommand(name, |s| s.hide(true)));
+    }
+    for name in WRITE_ME_CMDS {
+        cmd = cmd.mut_subcommand("me", |m| m.mut_subcommand(name, |s| s.hide(true)));
+    }
+    cmd
+}
+
+fn is_write_command(cmd: &Commands) -> bool {
+    matches!(
+        cmd,
+        Commands::Messages {
+            command: MessageCommands::Send { .. }
+                | MessageCommands::React { .. }
+                | MessageCommands::Unreact { .. }
+                | MessageCommands::Pin { .. }
+                | MessageCommands::Unpin { .. }
+        } | Commands::Dms {
+            command: DmCommands::Send { .. }
+        } | Commands::Files {
+            command: FileCommands::Upload { .. }
+        } | Commands::Me {
+            command: MeCommands::SetStatus { .. } | MeCommands::ClearStatus
+        }
+    )
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let readonly = is_readonly();
+
+    // Build command, hiding write subcommands if readonly
+    let mut cmd = Cli::command();
+    if readonly {
+        cmd = hide_write_subcommands(cmd);
+    }
+
+    let matches = cmd.get_matches();
+    let cli = Cli::from_arg_matches(&matches)?;
     let output = Output::new(cli.json, cli.quiet);
 
     // Print help if no command provided
     let Some(cmd) = cli.command else {
-        use clap::CommandFactory;
-        Cli::command().print_long_help()?;
+        let mut help_cmd = Cli::command();
+        if readonly {
+            help_cmd = hide_write_subcommands(help_cmd);
+        }
+        help_cmd.print_long_help()?;
         return Ok(());
     };
+
+    // Guard write commands in readonly mode
+    if readonly && is_write_command(&cmd) {
+        output.error("Write operations are disabled (SLACKLINE_READONLY is set)");
+        std::process::exit(1);
+    }
 
     // Handle token create/manifest commands (no auth required)
     if let Commands::Token { command } = &cmd {
         let result = match command {
-            TokenCommands::Create => Some(commands::token::create(&output)),
-            TokenCommands::Manifest => Some(commands::token::manifest(&output)),
+            TokenCommands::Create { write } => Some(commands::token::create(&output, !write)),
+            TokenCommands::Manifest { write } => Some(commands::token::manifest(&output, !write)),
             TokenCommands::Test => None, // requires auth, handled below
         };
         if let Some(result) = result {
@@ -275,7 +433,7 @@ async fn main() -> anyhow::Result<()> {
     let result = match cmd {
         Commands::Token { command } => match command {
             TokenCommands::Test => commands::token::test(&client, &output).await,
-            TokenCommands::Create | TokenCommands::Manifest => unreachable!(), // handled above
+            TokenCommands::Create { .. } | TokenCommands::Manifest { .. } => unreachable!(),
         },
         Commands::Channels { command } => match command {
             ChannelCommands::List { limit } => {
@@ -289,6 +447,9 @@ async fn main() -> anyhow::Result<()> {
             }
             ChannelCommands::Members { channel, limit } => {
                 commands::channels::members(&client, &output, &channel, limit).await
+            }
+            ChannelCommands::Pins { channel } => {
+                commands::channels::pins(&client, &output, &channel).await
             }
         },
         Commands::Users { command } => match command {
@@ -311,11 +472,37 @@ async fn main() -> anyhow::Result<()> {
                 channel,
                 message_ts,
             } => commands::messages::permalink(&client, &output, &channel, &message_ts).await,
+            MessageCommands::Reactions { channel, ts } => {
+                commands::messages::reactions(&client, &output, &channel, &ts).await
+            }
+            MessageCommands::Send {
+                channel,
+                text,
+                thread_ts,
+            } => {
+                commands::messages::send(&client, &output, &channel, &text, thread_ts.as_deref())
+                    .await
+            }
+            MessageCommands::React { channel, ts, emoji } => {
+                commands::messages::react(&client, &output, &channel, &ts, &emoji).await
+            }
+            MessageCommands::Unreact { channel, ts, emoji } => {
+                commands::messages::unreact(&client, &output, &channel, &ts, &emoji).await
+            }
+            MessageCommands::Pin { channel, ts } => {
+                commands::messages::pin(&client, &output, &channel, &ts).await
+            }
+            MessageCommands::Unpin { channel, ts } => {
+                commands::messages::unpin(&client, &output, &channel, &ts).await
+            }
         },
         Commands::Dms { command } => match command {
             DmCommands::List { limit } => commands::dms::list(&client, &output, limit).await,
             DmCommands::History { dm_channel, limit } => {
                 commands::dms::history(&client, &output, &dm_channel, limit).await
+            }
+            DmCommands::Send { user, text } => {
+                commands::dms::send(&client, &output, &user, &text).await
             }
         },
         Commands::Files { command } => match command {
@@ -331,11 +518,31 @@ async fn main() -> anyhow::Result<()> {
             FileCommands::Download { file, output: out } => {
                 commands::files::download(&client, &file, out.as_deref()).await
             }
+            FileCommands::Upload {
+                path,
+                channel,
+                thread_ts,
+                comment,
+            } => {
+                commands::files::upload(
+                    &client,
+                    &output,
+                    &path,
+                    channel.as_deref(),
+                    thread_ts.as_deref(),
+                    comment.as_deref(),
+                )
+                .await
+            }
         },
         Commands::Me { command } => match command {
             MeCommands::Channels { limit, dms, unread } => {
                 commands::me::channels(&client, &output, limit, dms, unread).await
             }
+            MeCommands::SetStatus { text, emoji } => {
+                commands::me::set_status(&client, &output, &text, emoji.as_deref()).await
+            }
+            MeCommands::ClearStatus => commands::me::clear_status(&client, &output).await,
         },
         Commands::Search { command } => match command {
             SearchCommands::Messages { query, limit } => {

@@ -157,3 +157,41 @@ pub async fn channels(
 
     Ok(())
 }
+
+/// Set the current user's status
+pub async fn set_status(
+    client: &Client,
+    output: &Output,
+    text: &str,
+    emoji: Option<&str>,
+) -> Result<()> {
+    let session = client.session();
+
+    let emoji_str = emoji.unwrap_or(":speech_balloon:");
+    let profile = SlackUserProfile::new()
+        .with_status_text(text.to_string())
+        .with_status_emoji(SlackEmoji(emoji_str.to_string()));
+
+    let request = SlackApiUsersProfileSetRequest::new(profile);
+    session.users_profile_set(&request).await?;
+
+    output.success(&format!("Status set to: {} {}", emoji_str, text));
+
+    Ok(())
+}
+
+/// Clear the current user's status
+pub async fn clear_status(client: &Client, output: &Output) -> Result<()> {
+    let session = client.session();
+
+    let profile = SlackUserProfile::new()
+        .with_status_text(String::new())
+        .with_status_emoji(SlackEmoji(String::new()));
+
+    let request = SlackApiUsersProfileSetRequest::new(profile);
+    session.users_profile_set(&request).await?;
+
+    output.success("Status cleared");
+
+    Ok(())
+}
