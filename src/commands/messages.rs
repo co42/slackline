@@ -42,6 +42,34 @@ impl HumanReadable for PermalinkInfo {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct ReactionInfo {
+    pub name: String,
+    pub count: u64,
+    pub users: Vec<String>,
+}
+
+impl HumanReadable for ReactionInfo {
+    fn print_human(&self) {
+        let users = self.users.join(", ");
+        println!("  :{}: ({}) — {}", self.name, self.count, users.dimmed());
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct SentMessage {
+    pub channel: String,
+    pub ts: String,
+    pub text: String,
+}
+
+impl HumanReadable for SentMessage {
+    fn print_human(&self) {
+        println!("{} in {}", "Message sent".green(), self.channel);
+        println!("  ts: {}", self.ts.dimmed());
+    }
+}
+
 pub async fn replies(
     client: &Client,
     output: &Output,
@@ -77,36 +105,6 @@ pub async fn replies(
     output.print_list(&replies, &format!("Thread replies in {}", channel));
 
     Ok(())
-}
-
-/// Reaction on a message
-#[derive(Debug, Serialize)]
-pub struct ReactionInfo {
-    pub name: String,
-    pub count: u64,
-    pub users: Vec<String>,
-}
-
-impl HumanReadable for ReactionInfo {
-    fn print_human(&self) {
-        let users = self.users.join(", ");
-        println!("  :{}: ({}) — {}", self.name, self.count, users.dimmed());
-    }
-}
-
-/// Sent message echo
-#[derive(Debug, Serialize)]
-pub struct SentMessage {
-    pub channel: String,
-    pub ts: String,
-    pub text: String,
-}
-
-impl HumanReadable for SentMessage {
-    fn print_human(&self) {
-        println!("{} in {}", "Message sent".green(), self.channel);
-        println!("  ts: {}", self.ts.dimmed());
-    }
 }
 
 pub async fn permalink(

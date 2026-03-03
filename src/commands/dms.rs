@@ -50,6 +50,22 @@ impl HumanReadable for DmMessage {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct SentDm {
+    pub channel: String,
+    pub ts: String,
+    pub user: String,
+    pub text: String,
+}
+
+impl HumanReadable for SentDm {
+    fn print_human(&self) {
+        println!("{} to {}", "DM sent".green(), self.user);
+        println!("  channel: {}", self.channel.dimmed());
+        println!("  ts: {}", self.ts.dimmed());
+    }
+}
+
 /// List DM conversations
 pub async fn list(client: &Client, output: &Output, limit: Option<u16>) -> Result<()> {
     let session = client.session();
@@ -113,22 +129,6 @@ pub async fn history(
     output.print_list(&messages, &format!("DM history in {}", dm_channel));
 
     Ok(())
-}
-
-#[derive(Debug, Serialize)]
-pub struct SentDm {
-    pub channel: String,
-    pub ts: String,
-    pub user: String,
-    pub text: String,
-}
-
-impl HumanReadable for SentDm {
-    fn print_human(&self) {
-        println!("{} to {}", "DM sent".green(), self.user);
-        println!("  channel: {}", self.channel.dimmed());
-        println!("  ts: {}", self.ts.dimmed());
-    }
 }
 
 /// Send a DM to a user (opens conversation first)

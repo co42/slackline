@@ -49,6 +49,21 @@ impl HumanReadable for FileInfo {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct UploadedFile {
+    pub id: String,
+    pub name: String,
+    pub size: u64,
+}
+
+impl HumanReadable for UploadedFile {
+    fn print_human(&self) {
+        println!("{} {}", "Uploaded".green(), self.name.bold());
+        println!("  id: {}", self.id.dimmed());
+        println!("  size: {} bytes", self.size);
+    }
+}
+
 fn slack_file_to_info(file: SlackFile) -> FileInfo {
     let timestamp = file.timestamp.map(|t| t.0);
 
@@ -158,21 +173,6 @@ pub async fn download(client: &Client, file_id: &str, output_path: Option<&str>)
     }
 
     Ok(())
-}
-
-#[derive(Debug, Serialize)]
-pub struct UploadedFile {
-    pub id: String,
-    pub name: String,
-    pub size: u64,
-}
-
-impl HumanReadable for UploadedFile {
-    fn print_human(&self) {
-        println!("{} {}", "Uploaded".green(), self.name.bold());
-        println!("  id: {}", self.id.dimmed());
-        println!("  size: {} bytes", self.size);
-    }
 }
 
 /// Upload a file to Slack (3-step upload flow)

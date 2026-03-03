@@ -88,6 +88,36 @@ impl HumanReadable for MemberInfo {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct PinnedMessage {
+    pub channel: String,
+    pub ts: String,
+    pub text: String,
+    pub pinned_by: Option<String>,
+    pub pinned_at: Option<DateTime<Utc>>,
+}
+
+impl HumanReadable for PinnedMessage {
+    fn print_human(&self) {
+        let pinned_by = self.pinned_by.as_deref().unwrap_or("unknown");
+        let pinned_at = self
+            .pinned_at
+            .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_default();
+
+        println!(
+            "pinned by {} {}",
+            pinned_by.green(),
+            pinned_at.dimmed()
+        );
+        println!("  ts: {}", self.ts.dimmed());
+        if !self.text.is_empty() {
+            println!("  {}", self.text);
+        }
+        println!();
+    }
+}
+
 pub async fn list(client: &Client, output: &Output, limit: Option<u16>) -> Result<()> {
     let session = client.session();
 
@@ -182,66 +212,6 @@ pub async fn history(
     Ok(())
 }
 
-#[derive(Debug, Serialize)]
-pub struct PinnedMessage {
-    pub channel: String,
-    pub ts: String,
-    pub text: String,
-    pub pinned_by: Option<String>,
-    pub pinned_at: Option<DateTime<Utc>>,
-}
-
-impl HumanReadable for PinnedMessage {
-    fn print_human(&self) {
-        let pinned_by = self.pinned_by.as_deref().unwrap_or("unknown");
-        let pinned_at = self
-            .pinned_at
-            .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
-            .unwrap_or_default();
-
-        println!(
-            "pinned by {} {}",
-            pinned_by.green(),
-            pinned_at.dimmed()
-        );
-        println!("  ts: {}", self.ts.dimmed());
-        if !self.text.is_empty() {
-            println!("  {}", self.text);
-        }
-        println!();
-    }
-}
-
-/// List pinned messages in a channel
-pub async fn pins(client: &Client, output: &Output, channel: &str) -> Result<()> {
-    let session = client.session();
-    let channel_id = SlackChannelId::new(channel.to_string());
-
-    let request = SlackApiPinsListRequest::new(channel_id);
-    let response = session.pins_list(&request).await?;
-
-    let pinned: Vec<PinnedMessage> = response
-        .items
-        .into_iter()
-        .filter_map(|item| {
-            let msg = item.message?;
-            let pinned_at = DateTime::from_timestamp(item.created.0.timestamp(), 0);
-
-            Some(PinnedMessage {
-                channel: channel.to_string(),
-                ts: msg.origin.ts.0,
-                text: msg.content.text.unwrap_or_default(),
-                pinned_by: Some(item.created_by.0),
-                pinned_at,
-            })
-        })
-        .collect();
-
-    output.print_list(&pinned, &format!("Pinned messages in {}", channel));
-
-    Ok(())
-}
-
 pub async fn members(
     client: &Client,
     output: &Output,
@@ -272,6 +242,36 @@ pub async fn members(
         .collect();
 
     output.print_list(&members, &format!("Members of {}", channel));
+
+    Ok(())
+}
+
+/// List pinned messages in a channel
+pub async fn pins(client: &Client, output: &Output, channel: &str) -> Result<()> {
+    let session = client.session();
+    let channel_id = SlackChannelId::new(channel.to_string());
+
+    let request = SlackApiPinsListRequest::new(channel_id);
+    let response = session.pins_list(&request).await?;
+
+    let pinned: Vec<PinnedMessage> = response
+        .items
+        .into_iter()
+        .filter_map(|item| {
+            let msg = item.message?;
+            let pinned_at = DateTime::from_timestamp(item.created.0.timestamp(), 0);
+
+            Some(PinnedMessage {
+                channel: channel.to_string(),
+                ts: msg.origin.ts.0,
+                text: msg.content.text.unwrap_or_default(),
+                pinned_by: Some(item.created_by.0),
+                pinned_at,
+            })
+        })
+        .collect();
+
+    output.print_list(&pinned, &format!("Pinned messages in {}", channel));
 
     Ok(())
 }
