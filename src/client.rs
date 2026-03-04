@@ -1,5 +1,6 @@
 use crate::config::Config;
 use crate::error::Result;
+use futures::TryStreamExt;
 use slack_morphism::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -77,9 +78,9 @@ impl Client {
             }
         }
 
-        Err(crate::error::SlackCliError::Api(format!(
-            "channel not found: {channel}"
-        )))
+        Err(crate::error::SlackCliError::ChannelNotFound(
+            channel.to_string(),
+        ))
     }
 
     /// Resolve multiple channel names/IDs in a single paginated scan.
@@ -134,10 +135,11 @@ impl Client {
             }
         }
 
-        if let Some((name, _)) = names_to_find.into_iter().next() {
-            return Err(crate::error::SlackCliError::Api(format!(
-                "channel not found: {name}"
-            )));
+        if !names_to_find.is_empty() {
+            let missing: Vec<&str> = names_to_find.into_keys().collect();
+            return Err(crate::error::SlackCliError::ChannelNotFound(
+                missing.join(", "),
+            ));
         }
 
         Ok(result.into_iter().map(|o| o.unwrap()).collect())
@@ -149,7 +151,47 @@ impl Client {
     }
 
     fn looks_like_id(s: &str) -> bool {
-        (s.starts_with('C') || s.starts_with('D') || s.starts_with('G'))
+        (s.starts_with('C')
+            || s.starts_with('D')
+            || s.starts_with('G')
+            || s.starts_with('W'))
             && !s.contains(|c: char| c.is_lowercase())
+    }
+
+    fn looks_like_user_id(s: &str) -> bool {
+        (s.starts_with('U') || s.starts_with('W'))
+            && !s.contains(|c: char| c.is_lowercase())
+    }
+
+    /// Resolve a user name, @name, or ID to a SlackUserId.
+    /// Accepts: `U032LQBJTH8`, `@username`, `username`
+    pub async fn resolve_user(&self, user: &str) -> Result<SlackUserId> {
+        if Self::looks_like_user_id(user) {
+            return Ok(SlackUserId::new(user.to_string()));
+        }
+
+        let name = user.strip_prefix('@').unwrap_or(user);
+        let session = self.session();
+        let request = SlackApiUsersListRequest::new().with_limit(200);
+        let scroller = request.scroller();
+        let mut stream = scroller.to_items_stream(&session);
+
+        while let Some(batch) = stream.try_next().await? {
+            for u in batch {
+                let matches_name = u.name.as_deref() == Some(name);
+                let matches_display = u
+                    .profile
+                    .as_ref()
+                    .and_then(|p| p.display_name.as_deref())
+                    .is_some_and(|d| d == name);
+                if matches_name || matches_display {
+                    return Ok(u.id);
+                }
+            }
+        }
+
+        Err(crate::error::SlackCliError::UserNotFound(
+            user.to_string(),
+        ))
     }
 }

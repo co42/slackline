@@ -53,11 +53,11 @@ fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
             event_type == "reaction_added" || event_type == "reaction_removed"
         }
         EventFilter::Dm => event_type == "dm",
-        EventFilter::Channel => event_type.starts_with("channel_"),
+        EventFilter::Channel => event_type.starts_with("channel_") || event_type == "team_join",
         EventFilter::File => event_type.starts_with("file_"),
         EventFilter::Member => event_type == "member_joined" || event_type == "member_left",
         EventFilter::Status => event_type == "status_changed",
-        EventFilter::All => true,
+        EventFilter::All => unreachable!(),
     })
 }
 
@@ -104,6 +104,7 @@ struct WatchState {
 struct NameCache {
     users: HashMap<String, String>,
     channels: HashMap<String, String>,
+    messages: HashMap<(String, String), Option<String>>,
 }
 
 async fn resolve_user_name(
@@ -121,8 +122,12 @@ async fn resolve_user_name(
     if let Ok(resp) = session.users_info(&req).await {
         let name = resp
             .user
-            .name
+            .profile
+            .as_ref()
+            .and_then(|p| p.display_name.clone())
+            .filter(|n| !n.is_empty())
             .or(resp.user.real_name)
+            .or(resp.user.name)
             .unwrap_or_default();
         cache
             .write()
@@ -133,6 +138,16 @@ async fn resolve_user_name(
     } else {
         None
     }
+}
+
+/// Extract display name from a SlackUser using display_name > real_name > name priority.
+fn user_display_name(user: &SlackUser) -> Option<String> {
+    user.profile
+        .as_ref()
+        .and_then(|p| p.display_name.clone())
+        .filter(|n| !n.is_empty())
+        .or(user.real_name.clone())
+        .or(user.name.clone())
 }
 
 async fn resolve_channel_name(
@@ -149,7 +164,7 @@ async fn resolve_channel_name(
     let req =
         SlackApiConversationsInfoRequest::new(SlackChannelId::new(channel_id.to_string()));
     if let Ok(resp) = session.conversations_info(&req).await {
-        let name = resp.channel.name.unwrap_or_default();
+        let name = resp.channel.name.filter(|n| !n.is_empty())?;
         let display = format!("#{name}");
         cache
             .write()
@@ -171,18 +186,25 @@ fn slack_ts_to_string(ts: &SlackTs) -> String {
     ts.0.clone()
 }
 
-/// Cheaply extract event type(s) and channel ID from a raw event without API calls.
+/// Cheaply extract event type(s), channel ID, and subtype from a raw event without API calls.
 /// For Message events, returns both "message" and "dm" when channel_type is unknown.
-fn extract_event_info(event: &SlackEventCallbackBody) -> (Vec<&'static str>, Option<&str>) {
+fn extract_event_info(
+    event: &SlackEventCallbackBody,
+) -> (Vec<&'static str>, Option<&str>, Option<String>) {
     match event {
         SlackEventCallbackBody::Message(msg) => {
             let channel = msg.origin.channel.as_ref().map(|c| c.0.as_str());
+            let subtype = msg.subtype.as_ref().and_then(|s| {
+                serde_json::to_value(s)
+                    .ok()
+                    .and_then(|v| v.as_str().map(String::from))
+            });
             if is_dm_channel(msg.origin.channel_type.as_ref()) {
-                (vec!["dm"], channel)
+                (vec!["dm"], channel, subtype)
             } else if msg.origin.channel_type.is_some() {
-                (vec!["message"], channel)
+                (vec!["message"], channel, subtype)
             } else {
-                (vec!["message", "dm"], channel)
+                (vec!["message", "dm"], channel, subtype)
             }
         }
         SlackEventCallbackBody::ReactionAdded(r) => {
@@ -190,26 +212,42 @@ fn extract_event_info(event: &SlackEventCallbackBody) -> (Vec<&'static str>, Opt
                 SlackReactionsItem::Message(m) => m.origin.channel.as_ref().map(|c| c.0.as_str()),
                 SlackReactionsItem::File(_) => None,
             };
-            (vec!["reaction_added"], ch)
+            (vec!["reaction_added"], ch, None)
         }
         SlackEventCallbackBody::ReactionRemoved(r) => {
             let ch = match &r.item {
                 SlackReactionsItem::Message(m) => m.origin.channel.as_ref().map(|c| c.0.as_str()),
                 SlackReactionsItem::File(_) => None,
             };
-            (vec!["reaction_removed"], ch)
+            (vec!["reaction_removed"], ch, None)
         }
         SlackEventCallbackBody::MemberJoinedChannel(e) => {
-            (vec!["member_joined"], Some(e.channel.0.as_str()))
+            (vec!["member_joined"], Some(e.channel.0.as_str()), None)
         }
         SlackEventCallbackBody::MemberLeftChannel(e) => {
-            (vec!["member_left"], Some(e.channel.0.as_str()))
+            (vec!["member_left"], Some(e.channel.0.as_str()), None)
         }
         SlackEventCallbackBody::FileShared(e) => {
-            (vec!["file_shared"], Some(e.channel_id.0.as_str()))
+            (vec!["file_shared"], Some(e.channel_id.0.as_str()), None)
         }
-        SlackEventCallbackBody::UserStatusChanged(_) => (vec!["status_changed"], None),
-        _ => (vec!["unknown"], None),
+        SlackEventCallbackBody::UserStatusChanged(_) => (vec!["status_changed"], None, None),
+        SlackEventCallbackBody::ChannelCreated(e) => {
+            (vec!["channel_created"], Some(e.channel.id.0.as_str()), None)
+        }
+        SlackEventCallbackBody::ChannelDeleted(e) => {
+            (vec!["channel_deleted"], Some(e.channel.0.as_str()), None)
+        }
+        SlackEventCallbackBody::ChannelArchive(e) => {
+            (vec!["channel_archive"], Some(e.channel.0.as_str()), None)
+        }
+        SlackEventCallbackBody::ChannelUnarchive(e) => {
+            (vec!["channel_unarchive"], Some(e.channel.0.as_str()), None)
+        }
+        SlackEventCallbackBody::ChannelRename(e) => {
+            (vec!["channel_rename"], Some(e.channel.id.0.as_str()), None)
+        }
+        SlackEventCallbackBody::TeamJoin(_) => (vec!["team_join"], None, None),
+        _ => (vec!["unknown"], None, None),
     }
 }
 
@@ -224,6 +262,29 @@ fn is_dm_channel(channel_type: Option<&SlackChannelType>) -> bool {
     channel_type
         .map(|ct| ct.0 == "im" || ct.0 == "mpim")
         .unwrap_or(false)
+}
+
+/// Normalize events that have a channel + user (and optional file_id).
+/// Shared by MemberJoined, MemberLeft, FileShared, ChannelArchive, ChannelUnarchive.
+async fn normalize_channel_user_event(
+    ts: String,
+    event_type: &str,
+    channel_id: &str,
+    user_id: &str,
+    file_id: Option<&str>,
+    cache: &RwLock<NameCache>,
+    session: &SlackClientSession<'_, HyperConnector>,
+) -> WatchEvent {
+    WatchEvent {
+        ts,
+        event_type: event_type.to_string(),
+        channel: Some(channel_id.to_string()),
+        channel_name: resolve_channel_name(cache, session, channel_id).await,
+        user: Some(user_id.to_string()),
+        user_name: resolve_user_name(cache, session, user_id).await,
+        file_id: file_id.map(String::from),
+        ..Default::default()
+    }
 }
 
 async fn normalize_reaction(
@@ -243,7 +304,7 @@ async fn normalize_reaction(
         None
     };
     let text = match (&channel, &item_ts) {
-        (Some(ch), Some(its)) => fetch_message_text(session, ch, its).await,
+        (Some(ch), Some(its)) => cached_message_text(cache, session, ch, its).await,
         _ => None,
     };
     WatchEvent {
@@ -320,64 +381,194 @@ async fn normalize_event(
 
         SlackEventCallbackBody::ReactionAdded(r) => {
             Some(
-                normalize_reaction("reaction_added", ts, &r.user, &r.reaction, &r.item, cache, &session).await,
+                normalize_reaction(
+                    "reaction_added",
+                    ts,
+                    &r.user,
+                    &r.reaction,
+                    &r.item,
+                    cache,
+                    &session,
+                )
+                .await,
             )
         }
 
         SlackEventCallbackBody::ReactionRemoved(r) => {
             Some(
-                normalize_reaction("reaction_removed", ts, &r.user, &r.reaction, &r.item, cache, &session).await,
+                normalize_reaction(
+                    "reaction_removed",
+                    ts,
+                    &r.user,
+                    &r.reaction,
+                    &r.item,
+                    cache,
+                    &session,
+                )
+                .await,
             )
         }
 
-        SlackEventCallbackBody::MemberJoinedChannel(e) => Some(WatchEvent {
-            ts,
-            event_type: "member_joined".to_string(),
-            channel: Some(e.channel.0.clone()),
-            channel_name: resolve_channel_name(cache, &session, &e.channel.0).await,
-            user: Some(e.user.0.clone()),
-            user_name: resolve_user_name(cache, &session, &e.user.0).await,
-            ..Default::default()
-        }),
+        SlackEventCallbackBody::MemberJoinedChannel(e) => Some(
+            normalize_channel_user_event(
+                ts,
+                "member_joined",
+                &e.channel.0,
+                &e.user.0,
+                None,
+                cache,
+                &session,
+            )
+            .await,
+        ),
 
-        SlackEventCallbackBody::MemberLeftChannel(e) => Some(WatchEvent {
-            ts,
-            event_type: "member_left".to_string(),
-            channel: Some(e.channel.0.clone()),
-            channel_name: resolve_channel_name(cache, &session, &e.channel.0).await,
-            user: Some(e.user.0.clone()),
-            user_name: resolve_user_name(cache, &session, &e.user.0).await,
-            ..Default::default()
-        }),
+        SlackEventCallbackBody::MemberLeftChannel(e) => Some(
+            normalize_channel_user_event(
+                ts,
+                "member_left",
+                &e.channel.0,
+                &e.user.0,
+                None,
+                cache,
+                &session,
+            )
+            .await,
+        ),
 
-        SlackEventCallbackBody::FileShared(e) => Some(WatchEvent {
-            ts,
-            event_type: "file_shared".to_string(),
-            channel: Some(e.channel_id.0.clone()),
-            channel_name: resolve_channel_name(cache, &session, &e.channel_id.0).await,
-            user: Some(e.user_id.0.clone()),
-            user_name: resolve_user_name(cache, &session, &e.user_id.0).await,
-            file_id: Some(e.file_id.0.clone()),
-            ..Default::default()
-        }),
+        SlackEventCallbackBody::FileShared(e) => Some(
+            normalize_channel_user_event(
+                ts,
+                "file_shared",
+                &e.channel_id.0,
+                &e.user_id.0,
+                Some(&e.file_id.0),
+                cache,
+                &session,
+            )
+            .await,
+        ),
 
-        SlackEventCallbackBody::UserStatusChanged(e) => Some(WatchEvent {
-            ts,
-            event_type: "status_changed".to_string(),
-            user: Some(e.user.id.0.clone()),
-            user_name: e.user.name.clone(),
-            text: e
-                .user
-                .profile
-                .as_ref()
-                .and_then(|p| p.status_text.clone()),
-            emoji: e
-                .user
-                .profile
-                .as_ref()
-                .and_then(|p| p.status_emoji.as_ref().map(|em| em.0.clone())),
-            ..Default::default()
-        }),
+        SlackEventCallbackBody::UserStatusChanged(e) => {
+            let user_name = user_display_name(&e.user);
+            Some(WatchEvent {
+                ts,
+                event_type: "status_changed".to_string(),
+                user: Some(e.user.id.0.clone()),
+                user_name,
+                text: e
+                    .user
+                    .profile
+                    .as_ref()
+                    .and_then(|p| p.status_text.clone()),
+                emoji: e
+                    .user
+                    .profile
+                    .as_ref()
+                    .and_then(|p| p.status_emoji.as_ref().map(|em| em.0.clone())),
+                ..Default::default()
+            })
+        }
+
+        SlackEventCallbackBody::ChannelCreated(e) => {
+            let channel_id = e.channel.id.0.clone();
+            let channel_name = e.channel.name.clone().map(|n| format!("#{n}"));
+            if let Some(ref name) = channel_name {
+                cache
+                    .write()
+                    .await
+                    .channels
+                    .insert(channel_id.clone(), name.clone());
+            }
+            Some(WatchEvent {
+                ts,
+                event_type: "channel_created".to_string(),
+                channel: Some(channel_id),
+                channel_name,
+                user: e.channel.creator.as_ref().map(|c| c.0.clone()),
+                user_name: if let Some(ref creator) = e.channel.creator {
+                    resolve_user_name(cache, &session, &creator.0).await
+                } else {
+                    None
+                },
+                ..Default::default()
+            })
+        }
+
+        SlackEventCallbackBody::ChannelDeleted(e) => {
+            let channel_id = e.channel.0.clone();
+            let channel_name = resolve_channel_name(cache, &session, &channel_id).await;
+            Some(WatchEvent {
+                ts,
+                event_type: "channel_deleted".to_string(),
+                channel: Some(channel_id),
+                channel_name,
+                ..Default::default()
+            })
+        }
+
+        SlackEventCallbackBody::ChannelArchive(e) => Some(
+            normalize_channel_user_event(
+                ts,
+                "channel_archive",
+                &e.channel.0,
+                &e.user.0,
+                None,
+                cache,
+                &session,
+            )
+            .await,
+        ),
+
+        SlackEventCallbackBody::ChannelUnarchive(e) => Some(
+            normalize_channel_user_event(
+                ts,
+                "channel_unarchive",
+                &e.channel.0,
+                &e.user.0,
+                None,
+                cache,
+                &session,
+            )
+            .await,
+        ),
+
+        SlackEventCallbackBody::ChannelRename(e) => {
+            let channel_id = e.channel.id.0.clone();
+            let channel_name = e.channel.name.clone().map(|n| format!("#{n}"));
+            if let Some(ref name) = channel_name {
+                cache
+                    .write()
+                    .await
+                    .channels
+                    .insert(channel_id.clone(), name.clone());
+            }
+            Some(WatchEvent {
+                ts,
+                event_type: "channel_rename".to_string(),
+                channel: Some(channel_id),
+                channel_name,
+                ..Default::default()
+            })
+        }
+
+        SlackEventCallbackBody::TeamJoin(e) => {
+            let user_id = e.user.id.0.clone();
+            let user_name = user_display_name(&e.user);
+            if let Some(ref name) = user_name {
+                cache
+                    .write()
+                    .await
+                    .users
+                    .insert(user_id.clone(), name.clone());
+            }
+            Some(WatchEvent {
+                ts,
+                event_type: "team_join".to_string(),
+                user: Some(user_id),
+                user_name,
+                ..Default::default()
+            })
+        }
 
         _ => Some(WatchEvent {
             ts,
@@ -404,6 +595,24 @@ async fn fetch_message_text(
         .ok()
         .and_then(|resp| resp.messages.into_iter().next())
         .and_then(|msg| msg.content.text)
+}
+
+async fn cached_message_text(
+    cache: &RwLock<NameCache>,
+    session: &SlackClientSession<'_, HyperConnector>,
+    channel: &str,
+    ts: &str,
+) -> Option<String> {
+    let key = (channel.to_string(), ts.to_string());
+    {
+        let c = cache.read().await;
+        if let Some(text) = c.messages.get(&key) {
+            return text.clone();
+        }
+    }
+    let text = fetch_message_text(session, channel, ts).await;
+    cache.write().await.messages.insert(key, text.clone());
+    text
 }
 
 fn extract_reaction_item(item: &SlackReactionsItem) -> (Option<String>, Option<String>) {
@@ -458,7 +667,7 @@ async fn push_events_handler(
     let state_guard = states.read().await;
     let watch_state = state_guard
         .get_user_state::<WatchState>()
-        .expect("WatchState not found in user state");
+        .ok_or_else(|| Box::<dyn std::error::Error + Send + Sync>::from("WatchState not found"))?;
 
     if watch_state.raw {
         let json = serde_json::to_string(&event)?;
@@ -474,9 +683,9 @@ async fn push_events_handler(
     let cache = watch_state.name_cache.clone();
     drop(state_guard);
 
-    // Cheap pre-filter: extract event type and channel from the raw event
+    // Cheap pre-filter: extract event type, channel, and subtype from the raw event
     // without any API calls, and skip events that can't match.
-    let (possible_types, channel_id) = extract_event_info(&event.event);
+    let (possible_types, channel_id, subtype) = extract_event_info(&event.event);
 
     if !could_match_filter(&possible_types, &filters) {
         return Ok(());
@@ -491,16 +700,16 @@ async fn push_events_handler(
         }
     }
 
+    if let Some(ref subtype) = subtype
+        && exclude_subtypes.contains(subtype)
+    {
+        return Ok(());
+    }
+
     // Expensive path: resolve names via API calls.
     if let Some(watch_event) = normalize_event(&event, &cache, &client, &token).await {
         // Exact filter check (resolves the Message-vs-DM ambiguity).
         if !matches_filter(&watch_event.event_type, &filters) {
-            return Ok(());
-        }
-
-        if let Some(ref subtype) = watch_event.subtype
-            && exclude_subtypes.contains(subtype)
-        {
             return Ok(());
         }
 
@@ -589,7 +798,7 @@ pub async fn listen(
     let listener_environment = Arc::new(
         SlackClientEventsListenerEnvironment::new(client.clone())
             .with_error_handler(|err, _client, _states| {
-                eprintln!("socket mode error: {err}");
+                eprintln!("socket mode error: {err} ({err:?})");
                 http::StatusCode::OK
             })
             .with_user_state(watch_state),
