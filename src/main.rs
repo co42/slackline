@@ -78,6 +78,9 @@ enum Commands {
         /// Exclude these channels (names or IDs)
         #[arg(long, value_delimiter = ',', conflicts_with = "channels")]
         exclude_channels: Vec<String>,
+        /// Stream events from all workspace channels, not just ones you're in
+        #[arg(long, conflicts_with = "channels")]
+        all_channels: bool,
         /// Exclude message subtypes (comma-separated, e.g. bot_message,channel_join)
         #[arg(long, value_delimiter = ',')]
         exclude_subtypes: Vec<String>,
@@ -468,12 +471,13 @@ async fn main() -> anyhow::Result<()> {
         events,
         channels,
         exclude_channels,
+        all_channels,
         exclude_subtypes,
         raw,
     } = &cmd
     {
         let config = resolve_config(cli.token)?;
-        if let Err(e) = commands::watch::listen(&config, events, channels, exclude_channels, exclude_subtypes, *raw).await {
+        if let Err(e) = commands::watch::listen(&config, events, channels, exclude_channels, *all_channels, exclude_subtypes, *raw).await {
             output.error(&e.to_string());
             std::process::exit(1);
         }

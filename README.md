@@ -95,7 +95,8 @@ slackline me clear-status                                  # Clear status
 
 ### Watch (Socket Mode event streaming)
 ```bash
-slackline watch                                            # Stream all events (default: message,dm,reaction)
+slackline watch                                            # Stream events from your channels (default: message,dm,reaction)
+slackline watch --all-channels                             # Stream from all workspace channels
 slackline watch --events all                               # Stream all event types
 slackline watch --events message,reaction                  # Only messages and reactions
 slackline watch --channels general,infra                   # Only these channels (names or IDs)
@@ -104,7 +105,7 @@ slackline watch --exclude-subtypes bot_message             # Skip bot messages
 slackline watch --raw                                      # Output raw slack-morphism event JSON
 ```
 
-Requires `SLACK_TOKEN` (xoxp-...) and `SLACK_APP_TOKEN` (xapp-...). Events stream as JSONL to stdout. Uses your user token so you receive events from all channels you're a member of — no bot invite needed.
+Requires `SLACK_TOKEN` (xoxp-...) and `SLACK_APP_TOKEN` (xapp-...). Events stream as JSONL to stdout. By default, only events from channels you're a member of are shown. Use `--all-channels` for workspace-wide events.
 
 **Quick setup:**
 ```bash
@@ -136,6 +137,10 @@ export SLACKLINE_READONLY=1
 
 ## IDs and Timestamps
 
+All commands that take a channel accept an ID, a name, or `#name`:
+- `slackline channels info general` / `slackline channels info #general` / `slackline channels info C1RCG46LS`
+
+ID formats:
 - **Channel IDs**: `C...` (e.g., `C1RCG46LS`)
 - **DM IDs**: `D...` (e.g., `D032NSG9NAE`)
 - **User IDs**: `U...` (e.g., `U032LQBJTH8`)

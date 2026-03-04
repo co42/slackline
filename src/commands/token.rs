@@ -253,7 +253,13 @@ pub fn create(output: &Output, write: bool, watch: bool) -> Result<()> {
 
 pub fn manifest(output: &Output, write: bool, watch: bool) -> Result<()> {
     let manifest = make_manifest(write, watch);
-    println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
-    let _ = output;
+    if output.is_json() {
+        println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+    } else {
+        println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+        println!();
+        let url = manifest_url(&manifest);
+        println!("Create app: {}", url);
+    }
     Ok(())
 }

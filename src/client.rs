@@ -40,4 +40,41 @@ impl Client {
         let response = session.auth_test().await?;
         Ok(response)
     }
+
+    /// Resolve a channel name or ID to a SlackChannelId.
+    /// Accepts: `C1RCG46LS`, `#general`, `general`
+    pub async fn resolve_channel(&self, channel: &str) -> Result<SlackChannelId> {
+        // If it looks like a channel ID, use it directly
+        if (channel.starts_with('C') || channel.starts_with('D') || channel.starts_with('G'))
+            && !channel.contains(|c: char| c.is_lowercase())
+        {
+            return Ok(SlackChannelId::new(channel.to_string()));
+        }
+
+        let name = channel.strip_prefix('#').unwrap_or(channel);
+        let session = self.session();
+        let mut cursor = None;
+        loop {
+            let mut req = SlackApiConversationsListRequest::new()
+                .with_limit(200)
+                .with_exclude_archived(true);
+            if let Some(c) = cursor {
+                req = req.with_cursor(c);
+            }
+            let resp = session.conversations_list(&req).await?;
+            for ch in &resp.channels {
+                if ch.name.as_deref() == Some(name) {
+                    return Ok(ch.id.clone());
+                }
+            }
+            match resp.response_metadata.and_then(|m| m.next_cursor) {
+                Some(c) if !c.0.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+
+        Err(crate::error::SlackCliError::Api(format!(
+            "channel not found: {channel}"
+        )))
+    }
 }

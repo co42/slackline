@@ -31,6 +31,7 @@ impl HumanReadable for FileInfo {
         let title = self.title.as_deref().unwrap_or(&self.name);
 
         println!("{} by {}", title.green().bold(), user.cyan());
+        println!("  {}: {}", "ID".dimmed(), self.id);
         if let (Some(filetype), Some(mimetype)) = (&self.filetype, &self.mimetype) {
             println!("  {} | {}", filetype.yellow(), mimetype.dimmed());
         }
@@ -106,7 +107,8 @@ pub async fn list(
 
     let mut request = SlackApiFilesListRequest::new();
     if let Some(ch) = channel {
-        request = request.with_channel(SlackChannelId(ch.to_string()));
+        let channel_id = client.resolve_channel(ch).await?;
+        request = request.with_channel(channel_id);
     }
     if let Some(u) = user {
         request = request.with_user(SlackUserId(u.to_string()));
@@ -215,7 +217,8 @@ pub async fn upload(
     let file_complete = SlackApiFilesComplete::new(url_response.file_id.clone());
     let mut complete_request = SlackApiFilesCompleteUploadExternalRequest::new(vec![file_complete]);
     if let Some(ch) = channel {
-        complete_request = complete_request.with_channel_id(SlackChannelId::new(ch.to_string()));
+        let channel_id = client.resolve_channel(ch).await?;
+        complete_request = complete_request.with_channel_id(channel_id);
     }
     if let Some(ts) = thread_ts {
         complete_request = complete_request.with_thread_ts(SlackTs::new(ts.to_string()));

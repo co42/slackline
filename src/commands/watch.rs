@@ -7,10 +7,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-// ---------------------------------------------------------------------------
-// Event filter types
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventFilter {
     Message,
@@ -65,10 +61,6 @@ fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
     })
 }
 
-// ---------------------------------------------------------------------------
-// Normalized output events
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Default, Serialize)]
 pub struct WatchEvent {
     pub ts: String,
@@ -96,10 +88,6 @@ pub struct WatchEvent {
     pub subtype: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// User state passed through SlackClientEventsUserState
-// ---------------------------------------------------------------------------
-
 struct WatchState {
     filters: Vec<EventFilter>,
     channels: Vec<String>,
@@ -115,10 +103,6 @@ struct NameCache {
     users: HashMap<String, String>,
     channels: HashMap<String, String>,
 }
-
-// ---------------------------------------------------------------------------
-// Name resolution with cache
-// ---------------------------------------------------------------------------
 
 async fn resolve_user_name(
     cache: &RwLock<NameCache>,
@@ -176,10 +160,6 @@ async fn resolve_channel_name(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Event → WatchEvent conversion
-// ---------------------------------------------------------------------------
-
 fn ts_to_rfc3339(event_time: &SlackDateTime) -> String {
     let dt: DateTime<Utc> = event_time.0;
     dt.to_rfc3339()
@@ -227,6 +207,14 @@ async fn normalize_event(
                 None
             };
 
+            // For message_changed, text lives in the nested `message` field
+            let text = msg
+                .message
+                .as_ref()
+                .and_then(|m| m.content.as_ref())
+                .and_then(|c| c.text.clone())
+                .or_else(|| msg.content.as_ref().and_then(|c| c.text.clone()));
+
             Some(WatchEvent {
                 ts,
                 event_type: event_type.to_string(),
@@ -234,7 +222,7 @@ async fn normalize_event(
                 channel_name,
                 user: user_id,
                 user_name,
-                text: msg.content.as_ref().and_then(|c| c.text.clone()),
+                text,
                 thread_ts: msg.origin.thread_ts.as_ref().map(slack_ts_to_string),
                 subtype: msg.subtype.as_ref().and_then(|s| {
                     serde_json::to_value(s)
@@ -253,6 +241,10 @@ async fn normalize_event(
             } else {
                 None
             };
+            let text = match (&channel, &item_ts) {
+                (Some(ch), Some(its)) => fetch_message_text(&session, ch, its).await,
+                _ => None,
+            };
 
             Some(WatchEvent {
                 ts,
@@ -261,6 +253,7 @@ async fn normalize_event(
                 channel_name,
                 user: Some(user_id.clone()),
                 user_name: resolve_user_name(cache, &session, &user_id).await,
+                text,
                 emoji: Some(reaction.reaction.0.clone()),
                 item_ts,
                 ..Default::default()
@@ -275,6 +268,10 @@ async fn normalize_event(
             } else {
                 None
             };
+            let text = match (&channel, &item_ts) {
+                (Some(ch), Some(its)) => fetch_message_text(&session, ch, its).await,
+                _ => None,
+            };
 
             Some(WatchEvent {
                 ts,
@@ -283,6 +280,7 @@ async fn normalize_event(
                 channel_name,
                 user: Some(user_id.clone()),
                 user_name: resolve_user_name(cache, &session, &user_id).await,
+                text,
                 emoji: Some(reaction.reaction.0.clone()),
                 item_ts,
                 ..Default::default()
@@ -346,6 +344,25 @@ async fn normalize_event(
     }
 }
 
+async fn fetch_message_text(
+    session: &SlackClientSession<'_, HyperConnector>,
+    channel: &str,
+    ts: &str,
+) -> Option<String> {
+    let req = SlackApiConversationsHistoryRequest::new()
+        .with_channel(SlackChannelId::new(channel.to_string()))
+        .with_latest(SlackTs::new(ts.to_string()))
+        .with_oldest(SlackTs::new(ts.to_string()))
+        .with_inclusive(true)
+        .with_limit(1);
+    session
+        .conversations_history(&req)
+        .await
+        .ok()
+        .and_then(|resp| resp.messages.into_iter().next())
+        .and_then(|msg| msg.content.text)
+}
+
 fn extract_reaction_item(item: &SlackReactionsItem) -> (Option<String>, Option<String>) {
     match item {
         SlackReactionsItem::Message(msg) => {
@@ -357,9 +374,38 @@ fn extract_reaction_item(item: &SlackReactionsItem) -> (Option<String>, Option<S
     }
 }
 
-// ---------------------------------------------------------------------------
-// Push events callback (bare fn — state accessed via SlackClientEventsUserState)
-// ---------------------------------------------------------------------------
+/// Fetch all channel IDs the current user is a member of.
+async fn fetch_my_channels(client: &crate::client::Client) -> Result<Vec<String>> {
+    let session = client.session();
+    let mut channels = Vec::new();
+    let mut cursor = None;
+
+    loop {
+        let mut req = SlackApiUsersConversationsRequest::new()
+            .with_types(vec![
+                SlackConversationType::Public,
+                SlackConversationType::Private,
+                SlackConversationType::Mpim,
+                SlackConversationType::Im,
+            ])
+            .with_exclude_archived(true)
+            .with_limit(200);
+        if let Some(c) = cursor {
+            req = req.with_cursor(c);
+        }
+        let resp = session.users_conversations(&req).await?;
+        for ch in &resp.channels {
+            channels.push(ch.id.0.clone());
+        }
+        match resp.response_metadata.and_then(|m| m.next_cursor) {
+            Some(c) if !c.0.is_empty() => cursor = Some(c),
+            _ => break,
+        }
+    }
+
+    eprintln!("watching {} channels", channels.len());
+    Ok(channels)
+}
 
 async fn push_events_handler(
     event: SlackPushEventCallback,
@@ -412,69 +458,13 @@ async fn push_events_handler(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Resolve channel names to IDs
-// ---------------------------------------------------------------------------
-
-/// Resolve a list of channel args (IDs or names) to channel IDs.
-/// Names can be prefixed with `#` or bare (e.g. `#general` or `general`).
-/// IDs (starting with `C`) are passed through as-is.
-async fn resolve_channel_args(
-    session: &SlackClientSession<'_, HyperConnector>,
-    args: &[String],
-) -> Result<Vec<String>> {
-    let mut resolved = Vec::with_capacity(args.len());
-    for arg in args {
-        if arg.starts_with('C') && !arg.contains(|c: char| c.is_lowercase()) {
-            // Looks like a channel ID already
-            resolved.push(arg.clone());
-        } else {
-            let name = arg.strip_prefix('#').unwrap_or(arg);
-            let id = resolve_channel_id_by_name(session, name).await.ok_or_else(|| {
-                SlackCliError::Api(format!("channel not found: {arg}"))
-            })?;
-            resolved.push(id);
-        }
-    }
-    Ok(resolved)
-}
-
-async fn resolve_channel_id_by_name(
-    session: &SlackClientSession<'_, HyperConnector>,
-    name: &str,
-) -> Option<String> {
-    // Paginate through conversations to find by name
-    let mut cursor = None;
-    loop {
-        let mut req = SlackApiConversationsListRequest::new()
-            .with_limit(200)
-            .with_exclude_archived(true);
-        if let Some(c) = cursor {
-            req = req.with_cursor(c);
-        }
-        let resp = session.conversations_list(&req).await.ok()?;
-        for ch in &resp.channels {
-            if ch.name.as_deref() == Some(name) {
-                return Some(ch.id.0.clone());
-            }
-        }
-        match resp.response_metadata.and_then(|m| m.next_cursor) {
-            Some(c) if !c.0.is_empty() => cursor = Some(c),
-            _ => break,
-        }
-    }
-    None
-}
-
-// ---------------------------------------------------------------------------
-// Main listener entry point
-// ---------------------------------------------------------------------------
-
+/// Connect to Slack Socket Mode and stream events as JSONL to stdout.
 pub async fn listen(
     config: &crate::Config,
     events: &[EventFilter],
     channels: &[String],
     exclude_channels: &[String],
+    all_channels: bool,
     exclude_subtypes: &[String],
     raw: bool,
 ) -> Result<()> {
@@ -501,14 +491,29 @@ pub async fn listen(
 
     let user_token = SlackApiToken::new(config.token.clone().into());
 
-    // Resolve channel names to IDs upfront
     let (channels, exclude_channels) = {
-        let resolve_client = Arc::new(slack_morphism::SlackClient::new(
-            SlackClientHyperHttpsConnector::new()?,
-        ));
-        let session = resolve_client.open_session(&user_token);
-        let ch = resolve_channel_args(&session, channels).await?;
-        let ex = resolve_channel_args(&session, exclude_channels).await?;
+        let tmp_client = crate::client::Client::new(config)?;
+
+        let ch = if !channels.is_empty() {
+            // Explicit --channels: resolve names to IDs
+            let mut resolved = Vec::with_capacity(channels.len());
+            for arg in channels {
+                resolved.push(tmp_client.resolve_channel(arg).await?.0);
+            }
+            resolved
+        } else if all_channels {
+            // --all-channels: no filter
+            Vec::new()
+        } else {
+            // Default: only channels the user is a member of
+            eprintln!("fetching your channel list...");
+            fetch_my_channels(&tmp_client).await?
+        };
+
+        let mut ex = Vec::with_capacity(exclude_channels.len());
+        for arg in exclude_channels {
+            ex.push(tmp_client.resolve_channel(arg).await?.0);
+        }
         (ch, ex)
     };
 

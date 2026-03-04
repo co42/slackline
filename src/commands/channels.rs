@@ -38,10 +38,16 @@ impl HumanReadable for ChannelInfo {
             members.dimmed(),
             archived
         );
+        println!("  {}: {}", "ID".dimmed(), self.id);
         if let Some(topic) = &self.topic
             && !topic.is_empty()
         {
-            println!("  {}", topic.dimmed());
+            println!("  {}: {}", "Topic".dimmed(), topic);
+        }
+        if let Some(purpose) = &self.purpose
+            && !purpose.is_empty()
+        {
+            println!("  {}: {}", "Purpose".dimmed(), purpose);
         }
     }
 }
@@ -150,7 +156,7 @@ pub async fn list(client: &Client, output: &Output, limit: Option<u16>) -> Resul
 
 pub async fn info(client: &Client, output: &Output, channel: &str) -> Result<()> {
     let session = client.session();
-    let channel_id = SlackChannelId::new(channel.to_string());
+    let channel_id = client.resolve_channel(channel).await?;
 
     let request = SlackApiConversationsInfoRequest::new(channel_id);
     let response = session.conversations_info(&request).await?;
@@ -178,7 +184,7 @@ pub async fn history(
     limit: Option<u16>,
 ) -> Result<()> {
     let session = client.session();
-    let channel_id = SlackChannelId::new(channel.to_string());
+    let channel_id = client.resolve_channel(channel).await?;
 
     let request = SlackApiConversationsHistoryRequest::new()
         .with_channel(channel_id)
@@ -216,7 +222,7 @@ pub async fn members(
     limit: Option<u16>,
 ) -> Result<()> {
     let session = client.session();
-    let channel_id = SlackChannelId::new(channel.to_string());
+    let channel_id = client.resolve_channel(channel).await?;
 
     let request = SlackApiConversationsMembersRequest::new()
         .with_channel(channel_id)
@@ -246,7 +252,7 @@ pub async fn members(
 /// List pinned messages in a channel
 pub async fn pins(client: &Client, output: &Output, channel: &str) -> Result<()> {
     let session = client.session();
-    let channel_id = SlackChannelId::new(channel.to_string());
+    let channel_id = client.resolve_channel(channel).await?;
 
     let request = SlackApiPinsListRequest::new(channel_id);
     let response = session.pins_list(&request).await?;
