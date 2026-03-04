@@ -72,8 +72,8 @@ slackline dms send <USER_ID> "text"                        # Send a DM
 ```bash
 slackline users list -l 50                                 # List users
 slackline users search "peter"                             # Search by name/email
-slackline users info <ID>                                  # User details
-slackline users presence <ID>                              # Online/away
+slackline users info @username                             # User details (by name, @name, or ID)
+slackline users presence @username                         # Online/away
 ```
 
 ### Files
@@ -140,6 +140,9 @@ export SLACKLINE_READONLY=1
 
 All commands that take a channel accept an ID, a name, or `#name`:
 - `slackline channels info general` / `slackline channels info #general` / `slackline channels info C1RCG46LS`
+
+User commands (`users info`, `users presence`) accept an ID, a name, or `@name`:
+- `slackline users info peter` / `slackline users info @peter` / `slackline users info U032LQBJTH8`
 
 ID formats:
 - **Channel IDs**: `C...` (e.g., `C1RCG46LS`)
