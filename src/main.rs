@@ -2,11 +2,11 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use slackline::{Config, Output, SlackClient, commands};
 use slackline::commands::watch::EventFilter;
 
-const ABOUT: &str = "Slack CLI for AI agents.";
+const ABOUT: &str = "Slack CLI.";
 
 #[derive(Parser)]
 #[command(name = "slackline")]
-#[command(about = "Slack CLI for AI agents", long_about = ABOUT)]
+#[command(about = "Slack CLI", long_about = ABOUT)]
 #[command(version)]
 struct Cli {
     /// Slack token (or set SLACK_TOKEN env var)
@@ -69,7 +69,7 @@ enum Commands {
     },
     /// Stream real-time events via Socket Mode (JSONL to stdout)
     Watch {
-        /// Event types to stream (comma-separated: message,mention,reaction,dm,channel,file,member,status,all)
+        /// Event types to stream (comma-separated: message,reaction,dm,channel,file,member,status,all)
         #[arg(long, value_delimiter = ',', value_parser = parse_event_filter)]
         events: Vec<EventFilter>,
         /// Filter to specific channel IDs (comma-separated, e.g. C1RCG46LS,C0AB2G3EY)
@@ -329,22 +329,22 @@ enum SearchCommands {
 enum TokenCommands {
     /// Test token and show workspace/user info
     Test,
-    /// Show instructions and URL to create a new Slack token (read-only by default)
+    /// Show instructions and URL to create a new Slack app (read-only by default)
     Create {
         /// Include write scopes (chat:write, files:write, etc.)
-        #[arg(long, conflicts_with = "watch")]
+        #[arg(long)]
         write: bool,
-        /// Create a Socket Mode app for `slackline watch` (includes bot + event subscriptions)
-        #[arg(long, conflicts_with = "write")]
+        /// Include Socket Mode + event subscriptions for `slackline watch`
+        #[arg(long)]
         watch: bool,
     },
     /// Print the app manifest JSON (read-only by default)
     Manifest {
         /// Include write scopes (chat:write, files:write, etc.)
-        #[arg(long, conflicts_with = "watch")]
+        #[arg(long)]
         write: bool,
-        /// Print Socket Mode manifest for `slackline watch`
-        #[arg(long, conflicts_with = "write")]
+        /// Include Socket Mode + event subscriptions for `slackline watch`
+        #[arg(long)]
         watch: bool,
     },
 }
@@ -440,15 +440,11 @@ async fn main() -> anyhow::Result<()> {
     // Handle token create/manifest commands (no auth required)
     if let Commands::Token { command } = &cmd {
         let result = match command {
-            TokenCommands::Create { watch: true, .. } => {
-                Some(commands::token::create_watch(&output))
+            TokenCommands::Create { write, watch } => {
+                Some(commands::token::create(&output, *write, *watch))
             }
-            TokenCommands::Create { write, .. } => Some(commands::token::create(&output, !write)),
-            TokenCommands::Manifest { watch: true, .. } => {
-                Some(commands::token::manifest_watch(&output))
-            }
-            TokenCommands::Manifest { write, .. } => {
-                Some(commands::token::manifest(&output, !write))
+            TokenCommands::Manifest { write, watch } => {
+                Some(commands::token::manifest(&output, *write, *watch))
             }
             TokenCommands::Test => None, // requires auth, handled below
         };

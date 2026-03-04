@@ -14,7 +14,6 @@ use tokio::sync::RwLock;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EventFilter {
     Message,
-    Mention,
     Reaction,
     Dm,
     Channel,
@@ -28,7 +27,6 @@ impl EventFilter {
     pub fn parse(s: &str) -> std::result::Result<Self, String> {
         match s.to_lowercase().as_str() {
             "message" => Ok(Self::Message),
-            "mention" => Ok(Self::Mention),
             "reaction" => Ok(Self::Reaction),
             "dm" => Ok(Self::Dm),
             "channel" => Ok(Self::Channel),
@@ -44,7 +42,6 @@ impl EventFilter {
 fn default_filters() -> Vec<EventFilter> {
     vec![
         EventFilter::Message,
-        EventFilter::Mention,
         EventFilter::Dm,
         EventFilter::Reaction,
     ]
@@ -56,7 +53,6 @@ fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
     }
     filters.iter().any(|f| match f {
         EventFilter::Message => event_type == "message",
-        EventFilter::Mention => event_type == "mention",
         EventFilter::Reaction => {
             event_type == "reaction_added" || event_type == "reaction_removed"
         }
@@ -243,23 +239,6 @@ async fn normalize_event(
                         .ok()
                         .and_then(|v| v.as_str().map(String::from))
                 }),
-                ..Default::default()
-            })
-        }
-
-        SlackEventCallbackBody::AppMention(mention) => {
-            let channel_id = mention.channel.0.clone();
-            let user_id = mention.user.0.clone();
-
-            Some(WatchEvent {
-                ts,
-                event_type: "mention".to_string(),
-                channel: Some(channel_id.clone()),
-                channel_name: resolve_channel_name(cache, &session, &channel_id).await,
-                user: Some(user_id.clone()),
-                user_name: resolve_user_name(cache, &session, &user_id).await,
-                text: mention.content.text.clone(),
-                thread_ts: mention.origin.thread_ts.as_ref().map(slack_ts_to_string),
                 ..Default::default()
             })
         }

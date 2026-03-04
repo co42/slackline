@@ -66,6 +66,25 @@ const WRITE_SCOPES: &[&str] = &[
     "users.profile:write",
 ];
 
+const EVENT_SUBSCRIPTIONS: &[&str] = &[
+    "message.channels",
+    "message.groups",
+    "message.im",
+    "message.mpim",
+    "reaction_added",
+    "reaction_removed",
+    "member_joined_channel",
+    "member_left_channel",
+    "file_shared",
+    "user_status_changed",
+    "channel_created",
+    "channel_deleted",
+    "channel_archive",
+    "channel_unarchive",
+    "channel_rename",
+    "team_join",
+];
+
 fn build_manifest(name: &str, description: &str, scopes: &[&str]) -> serde_json::Value {
     serde_json::json!({
         "display_information": {
@@ -86,50 +105,91 @@ fn build_manifest(name: &str, description: &str, scopes: &[&str]) -> serde_json:
     })
 }
 
+fn build_manifest_with_events(name: &str, description: &str, scopes: &[&str]) -> serde_json::Value {
+    serde_json::json!({
+        "display_information": {
+            "name": name,
+            "description": description,
+            "background_color": "#4a154b"
+        },
+        "oauth_config": {
+            "scopes": {
+                "user": scopes
+            }
+        },
+        "settings": {
+            "event_subscriptions": {
+                "user_events": EVENT_SUBSCRIPTIONS
+            },
+            "org_deploy_enabled": false,
+            "socket_mode_enabled": true,
+            "token_rotation_enabled": false
+        }
+    })
+}
+
 fn manifest_url(manifest: &serde_json::Value) -> String {
     let compact = serde_json::to_string(manifest).unwrap();
     let encoded = urlencoding::encode(&compact);
     format!("https://api.slack.com/apps?new_app=1&manifest_json={encoded}")
 }
 
-fn ro_manifest() -> serde_json::Value {
-    build_manifest(
-        "Slackline CLI (read-only)",
-        "Slack CLI for AI agents (read-only)",
-        READ_SCOPES,
-    )
-}
-
-fn rw_manifest() -> serde_json::Value {
-    let all_scopes: Vec<&str> = READ_SCOPES
-        .iter()
-        .chain(WRITE_SCOPES.iter())
-        .copied()
-        .collect();
-    build_manifest("Slackline CLI", "Slack CLI for AI agents", &all_scopes)
-}
-
-pub fn create(output: &Output, readonly: bool) -> Result<()> {
-    let manifest = if readonly {
-        ro_manifest()
+fn make_manifest(write: bool, watch: bool) -> serde_json::Value {
+    let scopes: Vec<&str> = if write {
+        READ_SCOPES
+            .iter()
+            .chain(WRITE_SCOPES.iter())
+            .copied()
+            .collect()
     } else {
-        rw_manifest()
+        READ_SCOPES.to_vec()
     };
-    let mode = if readonly { "read-only" } else { "read-write" };
+
+    let mode = if write { "rw" } else { "ro" };
+    let suffix = if watch {
+        format!(" {mode} watch")
+    } else {
+        format!(" {mode}")
+    };
+    let name = format!("Slackline{suffix}");
+    let description = format!("Slack CLI{suffix}");
+
+    if watch {
+        build_manifest_with_events(&name, &description, &scopes)
+    } else {
+        build_manifest(&name, &description, &scopes)
+    }
+}
+
+pub fn create(output: &Output, write: bool, watch: bool) -> Result<()> {
+    let manifest = make_manifest(write, watch);
+    let mode = match (write, watch) {
+        (true, true) => "read-write + watch",
+        (true, false) => "read-write",
+        (false, true) => "read + watch",
+        (false, false) => "read-only",
+    };
     let url = manifest_url(&manifest);
 
     if output.is_json() {
+        let mut steps = vec![
+            "Open the Slack app creation URL",
+            "Select your workspace",
+            "Click 'Create' to create the app from manifest",
+            "Go to 'Install App' in the sidebar",
+            "Click 'Install to Workspace' and authorize",
+            "Copy the 'User OAuth Token' (starts with xoxp-)",
+            "Store the token securely",
+        ];
+        if watch {
+            steps.push("Go to 'Basic Information' → 'App-Level Tokens'");
+            steps.push("Click 'Generate Token and Scopes'");
+            steps.push("Name it (e.g. 'socket') and add the 'connections:write' scope");
+            steps.push("Copy the app token (starts with xapp-)");
+        }
         let info = serde_json::json!({
             "mode": mode,
-            "steps": [
-                "Open the Slack app creation URL",
-                "Select your workspace",
-                "Click 'Create' to create the app from manifest",
-                "Go to 'Install App' in the sidebar",
-                "Click 'Install to Workspace' and authorize",
-                "Copy the 'User OAuth Token' (starts with xoxp-)",
-                "Store the token securely"
-            ],
+            "steps": steps,
             "create_url": url,
             "manifest": manifest,
         });
@@ -138,7 +198,7 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
         println!();
         println!("{}", "═".repeat(60));
         println!(
-            "  CREATE A SLACK USER TOKEN FOR SLACKLINE ({})",
+            "  CREATE A SLACK APP FOR SLACKLINE ({})",
             mode.to_uppercase()
         );
         println!("{}", "═".repeat(60));
@@ -155,166 +215,45 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
         println!();
         println!("5. Copy the 'User OAuth Token' (starts with xoxp-)");
         println!();
-        println!("6. Store it securely:");
+
+        let mut step = 6;
+        if watch {
+            println!("{}. Go to 'Basic Information' → 'App-Level Tokens'", step);
+            println!("   Click 'Generate Token and Scopes'");
+            println!("   Name: socket  |  Scope: connections:write");
+            println!("   Copy the token (starts with xapp-)");
+            println!();
+            step += 1;
+        }
+
+        println!("{}. Store tokens securely:", step);
         println!();
-        println!("   # macOS Keychain (recommended):");
-        println!("   security add-generic-password -s slack-token -a $USER -w 'xoxp-...'");
-        println!();
-        println!("   # Then use with:");
-        println!("   export SLACK_TOKEN=$(security find-generic-password -s slack-token -w)");
-        println!();
-        println!("   # Or add to ~/.zshrc:");
         println!("   export SLACK_TOKEN='xoxp-...'");
+        if watch {
+            println!("   export SLACK_APP_TOKEN='xapp-...'");
+        }
         println!();
         println!("{}", "─".repeat(60));
         println!("  Read scopes: channels, groups, im, mpim (read + history),");
         println!("  files:read, search:read, users:read, users:read.email,");
         println!("  pins:read, reactions:read");
-        if !readonly {
+        if write {
             println!("  Write scopes: chat:write, files:write, im:write,");
             println!("  pins:write, reactions:write, users.profile:write");
         }
-        println!("{}", "─".repeat(60));
-        println!();
-    }
-    Ok(())
-}
-
-const WATCH_USER_SCOPES: &[&str] = &[
-    "channels:history",
-    "channels:read",
-    "files:read",
-    "groups:history",
-    "groups:read",
-    "im:history",
-    "im:read",
-    "mpim:history",
-    "mpim:read",
-    "reactions:read",
-    "search:read",
-    "users:read",
-    "users:read.email",
-];
-
-const WATCH_EVENT_SUBSCRIPTIONS: &[&str] = &[
-    "app_mention",
-    "message.channels",
-    "message.groups",
-    "message.im",
-    "message.mpim",
-    "reaction_added",
-    "reaction_removed",
-    "member_joined_channel",
-    "member_left_channel",
-    "file_shared",
-    "user_status_changed",
-    "channel_created",
-    "channel_deleted",
-    "channel_archive",
-    "channel_unarchive",
-    "channel_rename",
-    "team_join",
-];
-
-fn watch_manifest() -> serde_json::Value {
-    serde_json::json!({
-        "display_information": {
-            "name": "Slackline Watch",
-            "description": "Socket Mode event streaming for slackline CLI",
-            "background_color": "#4a154b"
-        },
-        "oauth_config": {
-            "scopes": {
-                "user": WATCH_USER_SCOPES
-            }
-        },
-        "settings": {
-            "event_subscriptions": {
-                "user_events": WATCH_EVENT_SUBSCRIPTIONS
-            },
-            "org_deploy_enabled": false,
-            "socket_mode_enabled": true,
-            "token_rotation_enabled": false
+        if watch {
+            println!("  Events: messages, reactions, members, files, channels,");
+            println!("  user status, team join");
         }
-    })
-}
-
-pub fn create_watch(output: &Output) -> Result<()> {
-    let manifest = watch_manifest();
-    let url = manifest_url(&manifest);
-
-    if output.is_json() {
-        let info = serde_json::json!({
-            "mode": "watch",
-            "steps": [
-                "Open the Slack app creation URL",
-                "Select your workspace",
-                "Click 'Create' to create the app from manifest",
-                "Go to 'Install App' → 'Install to Workspace' and authorize",
-                "Copy the 'User OAuth Token' (starts with xoxp-)",
-                "Go to 'Basic Information' → 'App-Level Tokens'",
-                "Click 'Generate Token and Scopes'",
-                "Name it (e.g. 'socket') and add the 'connections:write' scope",
-                "Copy the app token (starts with xapp-)",
-                "Store both tokens securely"
-            ],
-            "create_url": url,
-            "manifest": manifest,
-        });
-        println!("{}", serde_json::to_string_pretty(&info).unwrap());
-    } else {
-        println!();
-        println!("{}", "═".repeat(60));
-        println!("  CREATE A SOCKET MODE APP FOR SLACKLINE WATCH");
-        println!("{}", "═".repeat(60));
-        println!();
-        println!("1. Open this URL to create a Slack app with Socket Mode:");
-        println!();
-        println!("   {}", url);
-        println!();
-        println!("2. Select your workspace and click 'Create'");
-        println!();
-        println!("3. Go to 'Install App' → 'Install to Workspace'");
-        println!("   Copy the 'User OAuth Token' (starts with xoxp-)");
-        println!();
-        println!("4. Go to 'Basic Information' → 'App-Level Tokens'");
-        println!("   Click 'Generate Token and Scopes'");
-        println!("   Name: socket  |  Scope: connections:write");
-        println!("   Copy the token (starts with xapp-)");
-        println!();
-        println!("5. Store both tokens:");
-        println!();
-        println!("   export SLACK_TOKEN='xoxp-...'         # User token (API + events)");
-        println!("   export SLACK_APP_TOKEN='xapp-...'      # App token (Socket Mode connection)");
-        println!();
-        println!("6. Start streaming:");
-        println!("   slackline watch");
-        println!();
-        println!("{}", "─".repeat(60));
-        println!("  User scopes: channels/groups/im/mpim (read + history),");
-        println!("  reactions:read, search:read, users:read, files:read");
-        println!("  Events: messages, reactions, mentions, members, files,");
-        println!("  channels, user status, team join");
         println!("{}", "─".repeat(60));
         println!();
     }
     Ok(())
 }
 
-pub fn manifest_watch(output: &Output) -> Result<()> {
-    print_manifest(output, &watch_manifest())
-}
-
-pub fn manifest(output: &Output, readonly: bool) -> Result<()> {
-    let manifest = if readonly {
-        ro_manifest()
-    } else {
-        rw_manifest()
-    };
-    print_manifest(output, &manifest)
-}
-
-fn print_manifest(_output: &Output, manifest: &serde_json::Value) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(manifest).unwrap());
+pub fn manifest(output: &Output, write: bool, watch: bool) -> Result<()> {
+    let manifest = make_manifest(write, watch);
+    println!("{}", serde_json::to_string_pretty(&manifest).unwrap());
+    let _ = output;
     Ok(())
 }
