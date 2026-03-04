@@ -102,7 +102,7 @@ pub async fn history(
     limit: Option<u16>,
 ) -> Result<()> {
     let session = client.session();
-    let channel_id = SlackChannelId::new(dm_channel.to_string());
+    let channel_id = client.resolve_channel(dm_channel).await?;
 
     let request = SlackApiConversationsHistoryRequest::new()
         .with_channel(channel_id)

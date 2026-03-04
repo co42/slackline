@@ -2,7 +2,7 @@
 name = "slackline"
 version = "0.6.0"
 edition = "2024"
-description = "Slack CLI for AI agents"
+description = "Slack CLI"
 license = "MIT"
 repository = "https://github.com/co42/slackline"
 readme = "README.md"
@@ -24,7 +24,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 slack-morphism = { version = "2", features = ["hyper"] }
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+http = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 urlencoding = "2"
 
 [patch.crates-io]

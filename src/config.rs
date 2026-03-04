@@ -3,6 +3,7 @@ use crate::error::{Result, SlackCliError};
 #[derive(Debug, Clone)]
 pub struct Config {
     pub token: String,
+    pub app_token: Option<String>,
 }
 
 impl Config {
@@ -19,10 +20,13 @@ impl Config {
                 )
             })?;
 
-        Ok(Self { token })
+        let app_token = std::env::var("SLACK_APP_TOKEN").ok();
+
+        Ok(Self { token, app_token })
     }
 
     pub fn with_token(token: String) -> Self {
-        Self { token }
+        let app_token = std::env::var("SLACK_APP_TOKEN").ok();
+        Self { token, app_token }
     }
 }

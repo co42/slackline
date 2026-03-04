@@ -1,11 +1,12 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use slackline::commands::watch::EventFilter;
 use slackline::{Config, Output, SlackClient, commands};
 
-const ABOUT: &str = "Slack CLI for AI agents.";
+const ABOUT: &str = "Slack CLI.";
 
 #[derive(Parser)]
 #[command(name = "slackline")]
-#[command(about = "Slack CLI for AI agents", long_about = ABOUT)]
+#[command(about = "Slack CLI", long_about = ABOUT)]
 #[command(version)]
 struct Cli {
     /// Slack token (or set SLACK_TOKEN env var)
@@ -65,6 +66,29 @@ enum Commands {
     Token {
         #[command(subcommand)]
         command: TokenCommands,
+    },
+    /// Stream real-time events via Socket Mode (JSONL to stdout)
+    Watch {
+        /// Event types to stream (comma-separated: message,reaction,dm,channel,file,member,status,all)
+        #[arg(long, value_delimiter = ',', value_parser = parse_event_filter)]
+        events: Vec<EventFilter>,
+        /// Only include these channels (names or IDs, e.g. general,infra or C1RCG46LS)
+        #[arg(long, value_delimiter = ',', conflicts_with = "exclude_channels")]
+        channels: Vec<String>,
+        /// Exclude these channels (names or IDs). Combine with --all-channels to
+        /// stream everything except specific channels.
+        #[arg(long, value_delimiter = ',', conflicts_with = "channels")]
+        exclude_channels: Vec<String>,
+        /// Stream events from all workspace channels, not just ones you're in.
+        /// Combine with --exclude-channels to filter out specific channels.
+        #[arg(long, conflicts_with = "channels")]
+        all_channels: bool,
+        /// Exclude message subtypes (comma-separated, e.g. bot_message,channel_join)
+        #[arg(long, value_delimiter = ',')]
+        exclude_subtypes: Vec<String>,
+        /// Output raw slack-morphism event JSON instead of normalized format
+        #[arg(long)]
+        raw: bool,
     },
 }
 
@@ -316,18 +340,35 @@ enum SearchCommands {
 enum TokenCommands {
     /// Test token and show workspace/user info
     Test,
-    /// Show instructions and URL to create a new Slack token (read-only by default)
+    /// Show instructions and URL to create a new Slack app (read-only by default)
     Create {
         /// Include write scopes (chat:write, files:write, etc.)
         #[arg(long)]
         write: bool,
+        /// Include Socket Mode + event subscriptions for `slackline watch`
+        #[arg(long)]
+        watch: bool,
     },
     /// Print the app manifest JSON (read-only by default)
     Manifest {
         /// Include write scopes (chat:write, files:write, etc.)
         #[arg(long)]
         write: bool,
+        /// Include Socket Mode + event subscriptions for `slackline watch`
+        #[arg(long)]
+        watch: bool,
     },
+}
+
+fn parse_event_filter(s: &str) -> std::result::Result<EventFilter, String> {
+    EventFilter::parse(s)
+}
+
+fn resolve_config(token: Option<String>) -> anyhow::Result<Config> {
+    Ok(match token {
+        Some(token) => Config::with_token(token),
+        None => Config::from_env()?,
+    })
 }
 
 fn is_readonly() -> bool {
@@ -410,8 +451,12 @@ async fn main() -> anyhow::Result<()> {
     // Handle token create/manifest commands (no auth required)
     if let Commands::Token { command } = &cmd {
         let result = match command {
-            TokenCommands::Create { write } => Some(commands::token::create(&output, !write)),
-            TokenCommands::Manifest { write } => Some(commands::token::manifest(&output, !write)),
+            TokenCommands::Create { write, watch } => {
+                Some(commands::token::create(&output, *write, *watch))
+            }
+            TokenCommands::Manifest { write, watch } => {
+                Some(commands::token::manifest(&output, *write, *watch))
+            }
             TokenCommands::Test => None, // requires auth, handled below
         };
         if let Some(result) = result {
@@ -423,10 +468,35 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    let config = match cli.token {
-        Some(token) => Config::with_token(token),
-        None => Config::from_env()?,
-    };
+    // Handle watch command (needs config but not the usual client)
+    if let Commands::Watch {
+        events,
+        channels,
+        exclude_channels,
+        all_channels,
+        exclude_subtypes,
+        raw,
+    } = &cmd
+    {
+        let config = resolve_config(cli.token)?;
+        if let Err(e) = commands::watch::listen(
+            &config,
+            events,
+            channels,
+            exclude_channels,
+            *all_channels,
+            exclude_subtypes,
+            *raw,
+        )
+        .await
+        {
+            output.error(&e.to_string());
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    let config = resolve_config(cli.token)?;
 
     let client = SlackClient::new(&config)?;
 
@@ -549,6 +619,7 @@ async fn main() -> anyhow::Result<()> {
                 commands::search::messages(&client, &output, &query, limit).await
             }
         },
+        Commands::Watch { .. } => unreachable!("handled above"),
     };
 
     if let Err(e) = result {

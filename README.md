@@ -1,6 +1,6 @@
 # slackline
 
-Slack CLI for AI agents.
+Slack CLI.
 
 ## Install
 
@@ -72,8 +72,8 @@ slackline dms send <USER_ID> "text"                        # Send a DM
 ```bash
 slackline users list -l 50                                 # List users
 slackline users search "peter"                             # Search by name/email
-slackline users info <ID>                                  # User details
-slackline users presence <ID>                              # Online/away
+slackline users info @username                             # User details (by name, @name, or ID)
+slackline users presence @username                         # Online/away
 ```
 
 ### Files
@@ -93,13 +93,39 @@ slackline me set-status "In a meeting" -e ":calendar:"     # Set status
 slackline me clear-status                                  # Clear status
 ```
 
+### Watch (Socket Mode event streaming)
+```bash
+slackline watch                                            # Stream events from your channels (default: message,dm,reaction)
+slackline watch --all-channels                             # Stream from all workspace channels
+slackline watch --events all                               # Stream all event types
+slackline watch --events message,reaction                  # Only messages and reactions
+slackline watch --channels general,infra                   # Only these channels (names or IDs)
+slackline watch --exclude-channels moon-landing            # All channels except these
+slackline watch --all-channels --exclude-channels noisy    # All except specific channels
+slackline watch --exclude-subtypes bot_message             # Skip bot messages
+slackline watch --raw                                      # Output raw slack-morphism event JSON
+```
+
+Requires `SLACK_TOKEN` (xoxp-...) and `SLACK_APP_TOKEN` (xapp-...). Events stream as JSONL to stdout. By default, only events from channels you're a member of are shown. Use `--all-channels` for workspace-wide events.
+
+**Quick setup:**
+```bash
+slackline token create --watch                             # Opens Slack with pre-configured manifest
+# Follow the steps, then:
+export SLACK_TOKEN='xoxp-...'                              # User token
+export SLACK_APP_TOKEN='xapp-...'                          # App-level token (Socket Mode)
+slackline watch
+```
+
 ### Token
 ```bash
 slackline token test                                       # Verify token works
-slackline token create                                     # Create read-only token
-slackline token create --write                             # Create token with write scopes
+slackline token create                                     # Create read-only app
+slackline token create --write                             # Include write scopes
+slackline token create --watch                             # Include Socket Mode for watch
+slackline token create --write --watch                     # Write + watch
 slackline token manifest                                   # Print read-only manifest
-slackline token manifest --write                           # Print manifest with write scopes
+slackline token manifest --write --watch                   # Print full manifest
 ```
 
 ## Read-only Mode
@@ -112,6 +138,13 @@ export SLACKLINE_READONLY=1
 
 ## IDs and Timestamps
 
+All commands that take a channel accept an ID, a name, or `#name`:
+- `slackline channels info general` / `slackline channels info #general` / `slackline channels info C1RCG46LS`
+
+User commands (`users info`, `users presence`) accept an ID, a name, or `@name`:
+- `slackline users info peter` / `slackline users info @peter` / `slackline users info U032LQBJTH8`
+
+ID formats:
 - **Channel IDs**: `C...` (e.g., `C1RCG46LS`)
 - **DM IDs**: `D...` (e.g., `D032NSG9NAE`)
 - **User IDs**: `U...` (e.g., `U032LQBJTH8`)

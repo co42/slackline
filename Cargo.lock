@@ -1742,6 +1742,7 @@ dependencies = [
  "colored",
  "dotenvy",
  "futures",
+ "http",
  "hyper",
  "hyper-rustls",
  "mime_guess",
