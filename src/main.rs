@@ -75,10 +75,12 @@ enum Commands {
         /// Only include these channels (names or IDs, e.g. general,infra or C1RCG46LS)
         #[arg(long, value_delimiter = ',', conflicts_with = "exclude_channels")]
         channels: Vec<String>,
-        /// Exclude these channels (names or IDs)
+        /// Exclude these channels (names or IDs). Combine with --all-channels to
+        /// stream everything except specific channels.
         #[arg(long, value_delimiter = ',', conflicts_with = "channels")]
         exclude_channels: Vec<String>,
-        /// Stream events from all workspace channels, not just ones you're in
+        /// Stream events from all workspace channels, not just ones you're in.
+        /// Combine with --exclude-channels to filter out specific channels.
         #[arg(long, conflicts_with = "channels")]
         all_channels: bool,
         /// Exclude message subtypes (comma-separated, e.g. bot_message,channel_join)

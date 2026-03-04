@@ -1,6 +1,7 @@
 use crate::config::Config;
 use crate::error::Result;
 use slack_morphism::prelude::*;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type HyperConnector = SlackClientHyperHttpsConnector;
@@ -44,10 +45,7 @@ impl Client {
     /// Resolve a channel name or ID to a SlackChannelId.
     /// Accepts: `C1RCG46LS`, `#general`, `general`
     pub async fn resolve_channel(&self, channel: &str) -> Result<SlackChannelId> {
-        // If it looks like a channel ID, use it directly
-        if (channel.starts_with('C') || channel.starts_with('D') || channel.starts_with('G'))
-            && !channel.contains(|c: char| c.is_lowercase())
-        {
+        if Self::looks_like_id(channel) {
             return Ok(SlackChannelId::new(channel.to_string()));
         }
 
@@ -57,7 +55,13 @@ impl Client {
         loop {
             let mut req = SlackApiConversationsListRequest::new()
                 .with_limit(200)
-                .with_exclude_archived(true);
+                .with_exclude_archived(true)
+                .with_types(vec![
+                    SlackConversationType::Public,
+                    SlackConversationType::Private,
+                    SlackConversationType::Mpim,
+                    SlackConversationType::Im,
+                ]);
             if let Some(c) = cursor {
                 req = req.with_cursor(c);
             }
@@ -76,5 +80,76 @@ impl Client {
         Err(crate::error::SlackCliError::Api(format!(
             "channel not found: {channel}"
         )))
+    }
+
+    /// Resolve multiple channel names/IDs in a single paginated scan.
+    pub async fn resolve_channels(&self, channels: &[String]) -> Result<Vec<SlackChannelId>> {
+        let mut result: Vec<Option<SlackChannelId>> = vec![None; channels.len()];
+        let mut names_to_find: HashMap<&str, Vec<usize>> = HashMap::new();
+
+        for (i, channel) in channels.iter().enumerate() {
+            if Self::looks_like_id(channel) {
+                result[i] = Some(SlackChannelId::new(channel.clone()));
+            } else {
+                let name = channel.strip_prefix('#').unwrap_or(channel);
+                names_to_find.entry(name).or_default().push(i);
+            }
+        }
+
+        if names_to_find.is_empty() {
+            return Ok(result.into_iter().map(|o| o.unwrap()).collect());
+        }
+
+        let session = self.session();
+        let mut cursor = None;
+        loop {
+            let mut req = SlackApiConversationsListRequest::new()
+                .with_limit(200)
+                .with_exclude_archived(true)
+                .with_types(vec![
+                    SlackConversationType::Public,
+                    SlackConversationType::Private,
+                    SlackConversationType::Mpim,
+                    SlackConversationType::Im,
+                ]);
+            if let Some(c) = cursor {
+                req = req.with_cursor(c);
+            }
+            let resp = session.conversations_list(&req).await?;
+            for ch in &resp.channels {
+                if let Some(name) = ch.name.as_deref()
+                    && let Some(indices) = names_to_find.remove(name)
+                {
+                    for i in indices {
+                        result[i] = Some(ch.id.clone());
+                    }
+                }
+            }
+            if names_to_find.is_empty() {
+                break;
+            }
+            match resp.response_metadata.and_then(|m| m.next_cursor) {
+                Some(c) if !c.0.is_empty() => cursor = Some(c),
+                _ => break,
+            }
+        }
+
+        if let Some((name, _)) = names_to_find.into_iter().next() {
+            return Err(crate::error::SlackCliError::Api(format!(
+                "channel not found: {name}"
+            )));
+        }
+
+        Ok(result.into_iter().map(|o| o.unwrap()).collect())
+    }
+
+    /// Get the inner SlackHyperClient for socket mode reuse.
+    pub fn inner(&self) -> &Arc<SlackHyperClient> {
+        &self.inner
+    }
+
+    fn looks_like_id(s: &str) -> bool {
+        (s.starts_with('C') || s.starts_with('D') || s.starts_with('G'))
+            && !s.contains(|c: char| c.is_lowercase())
     }
 }

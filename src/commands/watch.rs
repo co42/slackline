@@ -54,7 +54,7 @@ fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
         }
         EventFilter::Dm => event_type == "dm",
         EventFilter::Channel => event_type.starts_with("channel_"),
-        EventFilter::File => event_type.starts_with("file_") || event_type == "file_shared",
+        EventFilter::File => event_type.starts_with("file_"),
         EventFilter::Member => event_type == "member_joined" || event_type == "member_left",
         EventFilter::Status => event_type == "status_changed",
         EventFilter::All => true,
@@ -89,15 +89,17 @@ pub struct WatchEvent {
 }
 
 struct WatchState {
-    filters: Vec<EventFilter>,
-    channels: Vec<String>,
-    exclude_channels: Vec<String>,
-    exclude_subtypes: Vec<String>,
+    filters: Arc<[EventFilter]>,
+    channels: Arc<[String]>,
+    exclude_channels: Arc<[String]>,
+    exclude_subtypes: Arc<[String]>,
     raw: bool,
     user_token: SlackApiToken,
     name_cache: Arc<RwLock<NameCache>>,
 }
 
+/// Grows unbounded for the session lifetime. Acceptable for a CLI — a busy
+/// workspace might see a few thousand unique users/channels, well within limits.
 #[derive(Debug, Default)]
 struct NameCache {
     users: HashMap<String, String>,
@@ -169,10 +171,93 @@ fn slack_ts_to_string(ts: &SlackTs) -> String {
     ts.0.clone()
 }
 
+/// Cheaply extract event type(s) and channel ID from a raw event without API calls.
+/// For Message events, returns both "message" and "dm" when channel_type is unknown.
+fn extract_event_info(event: &SlackEventCallbackBody) -> (Vec<&'static str>, Option<&str>) {
+    match event {
+        SlackEventCallbackBody::Message(msg) => {
+            let channel = msg.origin.channel.as_ref().map(|c| c.0.as_str());
+            if is_dm_channel(msg.origin.channel_type.as_ref()) {
+                (vec!["dm"], channel)
+            } else if msg.origin.channel_type.is_some() {
+                (vec!["message"], channel)
+            } else {
+                (vec!["message", "dm"], channel)
+            }
+        }
+        SlackEventCallbackBody::ReactionAdded(r) => {
+            let ch = match &r.item {
+                SlackReactionsItem::Message(m) => m.origin.channel.as_ref().map(|c| c.0.as_str()),
+                SlackReactionsItem::File(_) => None,
+            };
+            (vec!["reaction_added"], ch)
+        }
+        SlackEventCallbackBody::ReactionRemoved(r) => {
+            let ch = match &r.item {
+                SlackReactionsItem::Message(m) => m.origin.channel.as_ref().map(|c| c.0.as_str()),
+                SlackReactionsItem::File(_) => None,
+            };
+            (vec!["reaction_removed"], ch)
+        }
+        SlackEventCallbackBody::MemberJoinedChannel(e) => {
+            (vec!["member_joined"], Some(e.channel.0.as_str()))
+        }
+        SlackEventCallbackBody::MemberLeftChannel(e) => {
+            (vec!["member_left"], Some(e.channel.0.as_str()))
+        }
+        SlackEventCallbackBody::FileShared(e) => {
+            (vec!["file_shared"], Some(e.channel_id.0.as_str()))
+        }
+        SlackEventCallbackBody::UserStatusChanged(_) => (vec!["status_changed"], None),
+        _ => (vec!["unknown"], None),
+    }
+}
+
+fn could_match_filter(possible_types: &[&str], filters: &[EventFilter]) -> bool {
+    if filters.contains(&EventFilter::All) {
+        return true;
+    }
+    possible_types.iter().any(|t| matches_filter(t, filters))
+}
+
 fn is_dm_channel(channel_type: Option<&SlackChannelType>) -> bool {
     channel_type
         .map(|ct| ct.0 == "im" || ct.0 == "mpim")
         .unwrap_or(false)
+}
+
+async fn normalize_reaction(
+    event_type: &str,
+    ts: String,
+    user: &SlackUserId,
+    reaction: &SlackReactionName,
+    item: &SlackReactionsItem,
+    cache: &RwLock<NameCache>,
+    session: &SlackClientSession<'_, HyperConnector>,
+) -> WatchEvent {
+    let user_id = user.0.clone();
+    let (channel, item_ts) = extract_reaction_item(item);
+    let channel_name = if let Some(ref cid) = channel {
+        resolve_channel_name(cache, session, cid).await
+    } else {
+        None
+    };
+    let text = match (&channel, &item_ts) {
+        (Some(ch), Some(its)) => fetch_message_text(session, ch, its).await,
+        _ => None,
+    };
+    WatchEvent {
+        ts,
+        event_type: event_type.to_string(),
+        channel,
+        channel_name,
+        user: Some(user_id.clone()),
+        user_name: resolve_user_name(cache, session, &user_id).await,
+        text,
+        emoji: Some(reaction.0.clone()),
+        item_ts,
+        ..Default::default()
+    }
 }
 
 async fn normalize_event(
@@ -233,58 +318,16 @@ async fn normalize_event(
             })
         }
 
-        SlackEventCallbackBody::ReactionAdded(reaction) => {
-            let user_id = reaction.user.0.clone();
-            let (channel, item_ts) = extract_reaction_item(&reaction.item);
-            let channel_name = if let Some(ref cid) = channel {
-                resolve_channel_name(cache, &session, cid).await
-            } else {
-                None
-            };
-            let text = match (&channel, &item_ts) {
-                (Some(ch), Some(its)) => fetch_message_text(&session, ch, its).await,
-                _ => None,
-            };
-
-            Some(WatchEvent {
-                ts,
-                event_type: "reaction_added".to_string(),
-                channel,
-                channel_name,
-                user: Some(user_id.clone()),
-                user_name: resolve_user_name(cache, &session, &user_id).await,
-                text,
-                emoji: Some(reaction.reaction.0.clone()),
-                item_ts,
-                ..Default::default()
-            })
+        SlackEventCallbackBody::ReactionAdded(r) => {
+            Some(
+                normalize_reaction("reaction_added", ts, &r.user, &r.reaction, &r.item, cache, &session).await,
+            )
         }
 
-        SlackEventCallbackBody::ReactionRemoved(reaction) => {
-            let user_id = reaction.user.0.clone();
-            let (channel, item_ts) = extract_reaction_item(&reaction.item);
-            let channel_name = if let Some(ref cid) = channel {
-                resolve_channel_name(cache, &session, cid).await
-            } else {
-                None
-            };
-            let text = match (&channel, &item_ts) {
-                (Some(ch), Some(its)) => fetch_message_text(&session, ch, its).await,
-                _ => None,
-            };
-
-            Some(WatchEvent {
-                ts,
-                event_type: "reaction_removed".to_string(),
-                channel,
-                channel_name,
-                user: Some(user_id.clone()),
-                user_name: resolve_user_name(cache, &session, &user_id).await,
-                text,
-                emoji: Some(reaction.reaction.0.clone()),
-                item_ts,
-                ..Default::default()
-            })
+        SlackEventCallbackBody::ReactionRemoved(r) => {
+            Some(
+                normalize_reaction("reaction_removed", ts, &r.user, &r.reaction, &r.item, cache, &session).await,
+            )
         }
 
         SlackEventCallbackBody::MemberJoinedChannel(e) => Some(WatchEvent {
@@ -431,18 +474,28 @@ async fn push_events_handler(
     let cache = watch_state.name_cache.clone();
     drop(state_guard);
 
-    if let Some(watch_event) = normalize_event(&event, &cache, &client, &token).await {
-        if !matches_filter(&watch_event.event_type, &filters) {
+    // Cheap pre-filter: extract event type and channel from the raw event
+    // without any API calls, and skip events that can't match.
+    let (possible_types, channel_id) = extract_event_info(&event.event);
+
+    if !could_match_filter(&possible_types, &filters) {
+        return Ok(());
+    }
+
+    if let Some(ch) = channel_id {
+        if !channels.is_empty() && !channels.iter().any(|c| c == ch) {
             return Ok(());
         }
+        if exclude_channels.iter().any(|c| c == ch) {
+            return Ok(());
+        }
+    }
 
-        if let Some(ref ch) = watch_event.channel {
-            if !channels.is_empty() && !channels.contains(ch) {
-                return Ok(());
-            }
-            if exclude_channels.contains(ch) {
-                return Ok(());
-            }
+    // Expensive path: resolve names via API calls.
+    if let Some(watch_event) = normalize_event(&event, &cache, &client, &token).await {
+        // Exact filter check (resolves the Message-vs-DM ambiguity).
+        if !matches_filter(&watch_event.event_type, &filters) {
+            return Ok(());
         }
 
         if let Some(ref subtype) = watch_event.subtype
@@ -491,45 +544,44 @@ pub async fn listen(
 
     let user_token = SlackApiToken::new(config.token.clone().into());
 
-    let (channels, exclude_channels) = {
-        let tmp_client = crate::client::Client::new(config)?;
+    let api_client = crate::client::Client::new(config)?;
 
-        let ch = if !channels.is_empty() {
-            // Explicit --channels: resolve names to IDs
-            let mut resolved = Vec::with_capacity(channels.len());
-            for arg in channels {
-                resolved.push(tmp_client.resolve_channel(arg).await?.0);
-            }
-            resolved
-        } else if all_channels {
-            // --all-channels: no filter
-            Vec::new()
-        } else {
-            // Default: only channels the user is a member of
-            eprintln!("fetching your channel list...");
-            fetch_my_channels(&tmp_client).await?
-        };
+    let channels = if !channels.is_empty() {
+        api_client
+            .resolve_channels(channels)
+            .await?
+            .into_iter()
+            .map(|id| id.0)
+            .collect()
+    } else if all_channels {
+        Vec::new()
+    } else {
+        eprintln!("fetching your channel list...");
+        fetch_my_channels(&api_client).await?
+    };
 
-        let mut ex = Vec::with_capacity(exclude_channels.len());
-        for arg in exclude_channels {
-            ex.push(tmp_client.resolve_channel(arg).await?.0);
-        }
-        (ch, ex)
+    let exclude_channels: Vec<String> = if !exclude_channels.is_empty() {
+        api_client
+            .resolve_channels(exclude_channels)
+            .await?
+            .into_iter()
+            .map(|id| id.0)
+            .collect()
+    } else {
+        Vec::new()
     };
 
     let watch_state = WatchState {
-        filters,
-        channels,
-        exclude_channels,
-        exclude_subtypes: exclude_subtypes.to_vec(),
+        filters: filters.into(),
+        channels: channels.into(),
+        exclude_channels: exclude_channels.into(),
+        exclude_subtypes: exclude_subtypes.to_vec().into(),
         raw,
         user_token,
         name_cache: Arc::new(RwLock::new(NameCache::default())),
     };
 
-    let client = Arc::new(slack_morphism::SlackClient::new(
-        SlackClientHyperHttpsConnector::new()?,
-    ));
+    let client = Arc::clone(api_client.inner());
 
     let socket_mode_callbacks =
         SlackSocketModeListenerCallbacks::new().with_push_events(push_events_handler);
