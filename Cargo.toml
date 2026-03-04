@@ -1,6 +1,6 @@
 [package]
 name = "slackline"
-version = "0.6.0"
+version = "1.0.0"
 edition = "2024"
 description = "Slack CLI"
 license = "MIT"
