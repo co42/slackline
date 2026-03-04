@@ -151,16 +151,12 @@ impl Client {
     }
 
     fn looks_like_id(s: &str) -> bool {
-        (s.starts_with('C')
-            || s.starts_with('D')
-            || s.starts_with('G')
-            || s.starts_with('W'))
+        (s.starts_with('C') || s.starts_with('D') || s.starts_with('G') || s.starts_with('W'))
             && !s.contains(|c: char| c.is_lowercase())
     }
 
     fn looks_like_user_id(s: &str) -> bool {
-        (s.starts_with('U') || s.starts_with('W'))
-            && !s.contains(|c: char| c.is_lowercase())
+        (s.starts_with('U') || s.starts_with('W')) && !s.contains(|c: char| c.is_lowercase())
     }
 
     /// Resolve a user name, @name, or ID to a SlackUserId.
@@ -190,8 +186,6 @@ impl Client {
             }
         }
 
-        Err(crate::error::SlackCliError::UserNotFound(
-            user.to_string(),
-        ))
+        Err(crate::error::SlackCliError::UserNotFound(user.to_string()))
     }
 }

@@ -1,6 +1,6 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
-use slackline::{Config, Output, SlackClient, commands};
 use slackline::commands::watch::EventFilter;
+use slackline::{Config, Output, SlackClient, commands};
 
 const ABOUT: &str = "Slack CLI.";
 
@@ -479,7 +479,17 @@ async fn main() -> anyhow::Result<()> {
     } = &cmd
     {
         let config = resolve_config(cli.token)?;
-        if let Err(e) = commands::watch::listen(&config, events, channels, exclude_channels, *all_channels, exclude_subtypes, *raw).await {
+        if let Err(e) = commands::watch::listen(
+            &config,
+            events,
+            channels,
+            exclude_channels,
+            *all_channels,
+            exclude_subtypes,
+            *raw,
+        )
+        .await
+        {
             output.error(&e.to_string());
             std::process::exit(1);
         }

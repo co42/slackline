@@ -36,11 +36,7 @@ impl EventFilter {
 }
 
 fn default_filters() -> Vec<EventFilter> {
-    vec![
-        EventFilter::Message,
-        EventFilter::Dm,
-        EventFilter::Reaction,
-    ]
+    vec![EventFilter::Message, EventFilter::Dm, EventFilter::Reaction]
 }
 
 fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
@@ -49,9 +45,7 @@ fn matches_filter(event_type: &str, filters: &[EventFilter]) -> bool {
     }
     filters.iter().any(|f| match f {
         EventFilter::Message => event_type == "message",
-        EventFilter::Reaction => {
-            event_type == "reaction_added" || event_type == "reaction_removed"
-        }
+        EventFilter::Reaction => event_type == "reaction_added" || event_type == "reaction_removed",
         EventFilter::Dm => event_type == "dm",
         EventFilter::Channel => event_type.starts_with("channel_") || event_type == "team_join",
         EventFilter::File => event_type.starts_with("file_"),
@@ -161,8 +155,7 @@ async fn resolve_channel_name(
             return Some(name.clone());
         }
     }
-    let req =
-        SlackApiConversationsInfoRequest::new(SlackChannelId::new(channel_id.to_string()));
+    let req = SlackApiConversationsInfoRequest::new(SlackChannelId::new(channel_id.to_string()));
     if let Ok(resp) = session.conversations_info(&req).await {
         let name = resp.channel.name.filter(|n| !n.is_empty())?;
         let display = format!("#{name}");
@@ -379,35 +372,31 @@ async fn normalize_event(
             })
         }
 
-        SlackEventCallbackBody::ReactionAdded(r) => {
-            Some(
-                normalize_reaction(
-                    "reaction_added",
-                    ts,
-                    &r.user,
-                    &r.reaction,
-                    &r.item,
-                    cache,
-                    &session,
-                )
-                .await,
+        SlackEventCallbackBody::ReactionAdded(r) => Some(
+            normalize_reaction(
+                "reaction_added",
+                ts,
+                &r.user,
+                &r.reaction,
+                &r.item,
+                cache,
+                &session,
             )
-        }
+            .await,
+        ),
 
-        SlackEventCallbackBody::ReactionRemoved(r) => {
-            Some(
-                normalize_reaction(
-                    "reaction_removed",
-                    ts,
-                    &r.user,
-                    &r.reaction,
-                    &r.item,
-                    cache,
-                    &session,
-                )
-                .await,
+        SlackEventCallbackBody::ReactionRemoved(r) => Some(
+            normalize_reaction(
+                "reaction_removed",
+                ts,
+                &r.user,
+                &r.reaction,
+                &r.item,
+                cache,
+                &session,
             )
-        }
+            .await,
+        ),
 
         SlackEventCallbackBody::MemberJoinedChannel(e) => Some(
             normalize_channel_user_event(
@@ -455,11 +444,7 @@ async fn normalize_event(
                 event_type: "status_changed".to_string(),
                 user: Some(e.user.id.0.clone()),
                 user_name,
-                text: e
-                    .user
-                    .profile
-                    .as_ref()
-                    .and_then(|p| p.status_text.clone()),
+                text: e.user.profile.as_ref().and_then(|p| p.status_text.clone()),
                 emoji: e
                     .user
                     .profile
