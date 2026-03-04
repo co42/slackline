@@ -72,9 +72,15 @@ enum Commands {
         /// Event types to stream (comma-separated: message,reaction,dm,channel,file,member,status,all)
         #[arg(long, value_delimiter = ',', value_parser = parse_event_filter)]
         events: Vec<EventFilter>,
-        /// Filter to specific channel IDs (comma-separated, e.g. C1RCG46LS,C0AB2G3EY)
-        #[arg(long, value_delimiter = ',')]
+        /// Only include these channels (names or IDs, e.g. general,infra or C1RCG46LS)
+        #[arg(long, value_delimiter = ',', conflicts_with = "exclude_channels")]
         channels: Vec<String>,
+        /// Exclude these channels (names or IDs)
+        #[arg(long, value_delimiter = ',', conflicts_with = "channels")]
+        exclude_channels: Vec<String>,
+        /// Exclude message subtypes (comma-separated, e.g. bot_message,channel_join)
+        #[arg(long, value_delimiter = ',')]
+        exclude_subtypes: Vec<String>,
         /// Output raw slack-morphism event JSON instead of normalized format
         #[arg(long)]
         raw: bool,
@@ -461,11 +467,13 @@ async fn main() -> anyhow::Result<()> {
     if let Commands::Watch {
         events,
         channels,
+        exclude_channels,
+        exclude_subtypes,
         raw,
     } = &cmd
     {
         let config = resolve_config(cli.token)?;
-        if let Err(e) = commands::watch::listen(&config, events, channels, *raw).await {
+        if let Err(e) = commands::watch::listen(&config, events, channels, exclude_channels, exclude_subtypes, *raw).await {
             output.error(&e.to_string());
             std::process::exit(1);
         }

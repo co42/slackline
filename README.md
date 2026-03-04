@@ -98,7 +98,9 @@ slackline me clear-status                                  # Clear status
 slackline watch                                            # Stream all events (default: message,dm,reaction)
 slackline watch --events all                               # Stream all event types
 slackline watch --events message,reaction                  # Only messages and reactions
-slackline watch --channels C1RCG46LS,C0AB2G3EY             # Filter to specific channels
+slackline watch --channels general,infra                   # Only these channels (names or IDs)
+slackline watch --exclude-channels moon-landing            # All channels except these
+slackline watch --exclude-subtypes bot_message             # Skip bot messages
 slackline watch --raw                                      # Output raw slack-morphism event JSON
 ```
 

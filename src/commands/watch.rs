@@ -102,7 +102,9 @@ pub struct WatchEvent {
 
 struct WatchState {
     filters: Vec<EventFilter>,
-    channel_filter: Vec<String>,
+    channels: Vec<String>,
+    exclude_channels: Vec<String>,
+    exclude_subtypes: Vec<String>,
     raw: bool,
     user_token: SlackApiToken,
     name_cache: Arc<RwLock<NameCache>>,
@@ -376,7 +378,9 @@ async fn push_events_handler(
     }
 
     let filters = watch_state.filters.clone();
-    let channel_filter = watch_state.channel_filter.clone();
+    let channels = watch_state.channels.clone();
+    let exclude_channels = watch_state.exclude_channels.clone();
+    let exclude_subtypes = watch_state.exclude_subtypes.clone();
     let token = watch_state.user_token.clone();
     let cache = watch_state.name_cache.clone();
     drop(state_guard);
@@ -386,11 +390,19 @@ async fn push_events_handler(
             return Ok(());
         }
 
-        if !channel_filter.is_empty() {
-            match watch_event.channel {
-                Some(ref ch) if channel_filter.contains(ch) => {}
-                Some(_) | None => return Ok(()),
+        if let Some(ref ch) = watch_event.channel {
+            if !channels.is_empty() && !channels.contains(ch) {
+                return Ok(());
             }
+            if exclude_channels.contains(ch) {
+                return Ok(());
+            }
+        }
+
+        if let Some(ref subtype) = watch_event.subtype
+            && exclude_subtypes.contains(subtype)
+        {
+            return Ok(());
         }
 
         let json = serde_json::to_string(&watch_event)?;
@@ -401,6 +413,60 @@ async fn push_events_handler(
 }
 
 // ---------------------------------------------------------------------------
+// Resolve channel names to IDs
+// ---------------------------------------------------------------------------
+
+/// Resolve a list of channel args (IDs or names) to channel IDs.
+/// Names can be prefixed with `#` or bare (e.g. `#general` or `general`).
+/// IDs (starting with `C`) are passed through as-is.
+async fn resolve_channel_args(
+    session: &SlackClientSession<'_, HyperConnector>,
+    args: &[String],
+) -> Result<Vec<String>> {
+    let mut resolved = Vec::with_capacity(args.len());
+    for arg in args {
+        if arg.starts_with('C') && !arg.contains(|c: char| c.is_lowercase()) {
+            // Looks like a channel ID already
+            resolved.push(arg.clone());
+        } else {
+            let name = arg.strip_prefix('#').unwrap_or(arg);
+            let id = resolve_channel_id_by_name(session, name).await.ok_or_else(|| {
+                SlackCliError::Api(format!("channel not found: {arg}"))
+            })?;
+            resolved.push(id);
+        }
+    }
+    Ok(resolved)
+}
+
+async fn resolve_channel_id_by_name(
+    session: &SlackClientSession<'_, HyperConnector>,
+    name: &str,
+) -> Option<String> {
+    // Paginate through conversations to find by name
+    let mut cursor = None;
+    loop {
+        let mut req = SlackApiConversationsListRequest::new()
+            .with_limit(200)
+            .with_exclude_archived(true);
+        if let Some(c) = cursor {
+            req = req.with_cursor(c);
+        }
+        let resp = session.conversations_list(&req).await.ok()?;
+        for ch in &resp.channels {
+            if ch.name.as_deref() == Some(name) {
+                return Some(ch.id.0.clone());
+            }
+        }
+        match resp.response_metadata.and_then(|m| m.next_cursor) {
+            Some(c) if !c.0.is_empty() => cursor = Some(c),
+            _ => break,
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // Main listener entry point
 // ---------------------------------------------------------------------------
 
@@ -408,6 +474,8 @@ pub async fn listen(
     config: &crate::Config,
     events: &[EventFilter],
     channels: &[String],
+    exclude_channels: &[String],
+    exclude_subtypes: &[String],
     raw: bool,
 ) -> Result<()> {
     let app_token_str = config.app_token.as_deref().ok_or_else(|| {
@@ -433,9 +501,22 @@ pub async fn listen(
 
     let user_token = SlackApiToken::new(config.token.clone().into());
 
+    // Resolve channel names to IDs upfront
+    let (channels, exclude_channels) = {
+        let resolve_client = Arc::new(slack_morphism::SlackClient::new(
+            SlackClientHyperHttpsConnector::new()?,
+        ));
+        let session = resolve_client.open_session(&user_token);
+        let ch = resolve_channel_args(&session, channels).await?;
+        let ex = resolve_channel_args(&session, exclude_channels).await?;
+        (ch, ex)
+    };
+
     let watch_state = WatchState {
         filters,
-        channel_filter: channels.to_vec(),
+        channels,
+        exclude_channels,
+        exclude_subtypes: exclude_subtypes.to_vec(),
         raw,
         user_token,
         name_cache: Arc::new(RwLock::new(NameCache::default())),
