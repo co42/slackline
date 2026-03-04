@@ -180,10 +180,10 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
     Ok(())
 }
 
-const WATCH_BOT_SCOPES: &[&str] = &[
-    "app_mentions:read",
+const WATCH_USER_SCOPES: &[&str] = &[
     "channels:history",
     "channels:read",
+    "files:read",
     "groups:history",
     "groups:read",
     "im:history",
@@ -191,9 +191,9 @@ const WATCH_BOT_SCOPES: &[&str] = &[
     "mpim:history",
     "mpim:read",
     "reactions:read",
+    "search:read",
     "users:read",
     "users:read.email",
-    "files:read",
 ];
 
 const WATCH_EVENT_SUBSCRIPTIONS: &[&str] = &[
@@ -223,20 +223,14 @@ fn watch_manifest() -> serde_json::Value {
             "description": "Socket Mode event streaming for slackline CLI",
             "background_color": "#4a154b"
         },
-        "features": {
-            "bot_user": {
-                "display_name": "Slackline Watch",
-                "always_online": false
-            }
-        },
         "oauth_config": {
             "scopes": {
-                "bot": WATCH_BOT_SCOPES
+                "user": WATCH_USER_SCOPES
             }
         },
         "settings": {
             "event_subscriptions": {
-                "bot_events": WATCH_EVENT_SUBSCRIPTIONS
+                "user_events": WATCH_EVENT_SUBSCRIPTIONS
             },
             "org_deploy_enabled": false,
             "socket_mode_enabled": true,
@@ -256,12 +250,12 @@ pub fn create_watch(output: &Output) -> Result<()> {
                 "Open the Slack app creation URL",
                 "Select your workspace",
                 "Click 'Create' to create the app from manifest",
+                "Go to 'Install App' → 'Install to Workspace' and authorize",
+                "Copy the 'User OAuth Token' (starts with xoxp-)",
                 "Go to 'Basic Information' → 'App-Level Tokens'",
                 "Click 'Generate Token and Scopes'",
                 "Name it (e.g. 'socket') and add the 'connections:write' scope",
-                "Copy the token (starts with xapp-)",
-                "Go to 'Install App' and install to your workspace",
-                "Copy the 'Bot User OAuth Token' (starts with xoxb-) as your SLACK_TOKEN",
+                "Copy the app token (starts with xapp-)",
                 "Store both tokens securely"
             ],
             "create_url": url,
@@ -280,28 +274,25 @@ pub fn create_watch(output: &Output) -> Result<()> {
         println!();
         println!("2. Select your workspace and click 'Create'");
         println!();
-        println!("3. Go to 'Basic Information' → 'App-Level Tokens'");
+        println!("3. Go to 'Install App' → 'Install to Workspace'");
+        println!("   Copy the 'User OAuth Token' (starts with xoxp-)");
+        println!();
+        println!("4. Go to 'Basic Information' → 'App-Level Tokens'");
         println!("   Click 'Generate Token and Scopes'");
         println!("   Name: socket  |  Scope: connections:write");
         println!("   Copy the token (starts with xapp-)");
         println!();
-        println!("4. Go to 'Install App' → 'Install to Workspace'");
-        println!("   Copy the 'Bot User OAuth Token' (starts with xoxb-)");
-        println!();
         println!("5. Store both tokens:");
         println!();
-        println!("   export SLACK_TOKEN='xoxb-...'        # Bot token (API lookups)");
-        println!("   export SLACK_APP_TOKEN='xapp-...'     # App token (Socket Mode)");
+        println!("   export SLACK_TOKEN='xoxp-...'         # User token (API + events)");
+        println!("   export SLACK_APP_TOKEN='xapp-...'      # App token (Socket Mode connection)");
         println!();
-        println!("6. Invite the bot to channels you want to watch:");
-        println!("   /invite @Slackline Watch");
-        println!();
-        println!("7. Start streaming:");
+        println!("6. Start streaming:");
         println!("   slackline watch");
         println!();
         println!("{}", "─".repeat(60));
-        println!("  Bot scopes: channels/groups/im/mpim (read + history),");
-        println!("  app_mentions:read, reactions:read, users:read, files:read");
+        println!("  User scopes: channels/groups/im/mpim (read + history),");
+        println!("  reactions:read, search:read, users:read, files:read");
         println!("  Events: messages, reactions, mentions, members, files,");
         println!("  channels, user status, team join");
         println!("{}", "─".repeat(60));

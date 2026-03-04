@@ -102,14 +102,14 @@ slackline watch --channels C1RCG46LS,C0AB2G3EY             # Filter to specific 
 slackline watch --raw                                      # Output raw slack-morphism event JSON
 ```
 
-Requires `SLACK_APP_TOKEN` (xapp-...) and `SLACK_TOKEN` (xoxb-...). Events stream as JSONL to stdout.
+Requires `SLACK_TOKEN` (xoxp-...) and `SLACK_APP_TOKEN` (xapp-...). Events stream as JSONL to stdout. Uses your user token so you receive events from all channels you're a member of — no bot invite needed.
 
 **Quick setup:**
 ```bash
 slackline token create --watch                             # Opens Slack with pre-configured manifest
 # Follow the steps, then:
-export SLACK_TOKEN='xoxb-...'                              # Bot token
-export SLACK_APP_TOKEN='xapp-...'                          # App-level token
+export SLACK_TOKEN='xoxp-...'                              # User token
+export SLACK_APP_TOKEN='xapp-...'                          # App-level token (Socket Mode)
 slackline watch
 ```
 
