@@ -66,8 +66,8 @@ const WRITE_SCOPES: &[&str] = &[
     "users.profile:write",
 ];
 
-fn build_manifest(name: &str, description: &str, scopes: &[&str]) -> String {
-    let manifest = serde_json::json!({
+fn build_manifest(name: &str, description: &str, scopes: &[&str]) -> serde_json::Value {
+    serde_json::json!({
         "display_information": {
             "name": name,
             "description": description,
@@ -83,12 +83,16 @@ fn build_manifest(name: &str, description: &str, scopes: &[&str]) -> String {
             "socket_mode_enabled": false,
             "token_rotation_enabled": false
         }
-    });
-
-    serde_json::to_string_pretty(&manifest).unwrap()
+    })
 }
 
-fn ro_manifest() -> String {
+fn manifest_url(manifest: &serde_json::Value) -> String {
+    let compact = serde_json::to_string(manifest).unwrap();
+    let encoded = urlencoding::encode(&compact);
+    format!("https://api.slack.com/apps?new_app=1&manifest_json={encoded}")
+}
+
+fn ro_manifest() -> serde_json::Value {
     build_manifest(
         "Slackline CLI (read-only)",
         "Slack CLI for AI agents (read-only)",
@@ -96,7 +100,7 @@ fn ro_manifest() -> String {
     )
 }
 
-fn rw_manifest() -> String {
+fn rw_manifest() -> serde_json::Value {
     let all_scopes: Vec<&str> = READ_SCOPES
         .iter()
         .chain(WRITE_SCOPES.iter())
@@ -112,14 +116,9 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
         rw_manifest()
     };
     let mode = if readonly { "read-only" } else { "read-write" };
-    let encoded = urlencoding::encode(&manifest);
-    let url = format!(
-        "https://api.slack.com/apps?new_app=1&manifest_json={}",
-        encoded
-    );
+    let url = manifest_url(&manifest);
 
     if output.is_json() {
-        let manifest_value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         let info = serde_json::json!({
             "mode": mode,
             "steps": [
@@ -132,7 +131,7 @@ pub fn create(output: &Output, readonly: bool) -> Result<()> {
                 "Store the token securely"
             ],
             "create_url": url,
-            "manifest": manifest_value,
+            "manifest": manifest,
         });
         println!("{}", serde_json::to_string_pretty(&info).unwrap());
     } else {
@@ -217,8 +216,8 @@ const WATCH_EVENT_SUBSCRIPTIONS: &[&str] = &[
     "team_join",
 ];
 
-fn watch_manifest() -> String {
-    let manifest = serde_json::json!({
+fn watch_manifest() -> serde_json::Value {
+    serde_json::json!({
         "display_information": {
             "name": "Slackline Watch",
             "description": "Socket Mode event streaming for slackline CLI",
@@ -243,21 +242,14 @@ fn watch_manifest() -> String {
             "socket_mode_enabled": true,
             "token_rotation_enabled": false
         }
-    });
-
-    serde_json::to_string_pretty(&manifest).unwrap()
+    })
 }
 
 pub fn create_watch(output: &Output) -> Result<()> {
     let manifest = watch_manifest();
-    let encoded = urlencoding::encode(&manifest);
-    let url = format!(
-        "https://api.slack.com/apps?new_app=1&manifest_json={}",
-        encoded
-    );
+    let url = manifest_url(&manifest);
 
     if output.is_json() {
-        let manifest_value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
         let info = serde_json::json!({
             "mode": "watch",
             "steps": [
@@ -273,7 +265,7 @@ pub fn create_watch(output: &Output) -> Result<()> {
                 "Store both tokens securely"
             ],
             "create_url": url,
-            "manifest": manifest_value,
+            "manifest": manifest,
         });
         println!("{}", serde_json::to_string_pretty(&info).unwrap());
     } else {
@@ -319,15 +311,7 @@ pub fn create_watch(output: &Output) -> Result<()> {
 }
 
 pub fn manifest_watch(output: &Output) -> Result<()> {
-    let manifest = watch_manifest();
-
-    if output.is_json() {
-        let value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
-        println!("{}", serde_json::to_string_pretty(&value).unwrap());
-    } else {
-        println!("{}", manifest);
-    }
-    Ok(())
+    print_manifest(output, &watch_manifest())
 }
 
 pub fn manifest(output: &Output, readonly: bool) -> Result<()> {
@@ -336,12 +320,10 @@ pub fn manifest(output: &Output, readonly: bool) -> Result<()> {
     } else {
         rw_manifest()
     };
+    print_manifest(output, &manifest)
+}
 
-    if output.is_json() {
-        let value: serde_json::Value = serde_json::from_str(&manifest).unwrap();
-        println!("{}", serde_json::to_string_pretty(&value).unwrap());
-    } else {
-        println!("{}", manifest);
-    }
+fn print_manifest(_output: &Output, manifest: &serde_json::Value) -> Result<()> {
+    println!("{}", serde_json::to_string_pretty(manifest).unwrap());
     Ok(())
 }
