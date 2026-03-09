@@ -1,7 +1,7 @@
 .PHONY: build release test clean
 
 VERSION ?= $(shell grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-HOMEBREW_TAP := ~/self/homebrew-tap
+HOMEBREW_TAP := $(HOME)/self/homebrew-tap
 REPO := co42/slackline
 
 build:
