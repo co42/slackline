@@ -13,6 +13,7 @@ categories = ["command-line-utilities"]
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
 colored = "3"
 dotenvy = "0.15"
 futures = "0.3"

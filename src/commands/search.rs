@@ -80,16 +80,21 @@ pub async fn messages(
     output: &Output,
     query: &str,
     limit: Option<u16>,
+    page: Option<u32>,
 ) -> Result<()> {
     let token = client.token();
     let count = limit.unwrap_or(20);
 
     // Build search URL
-    let url = format!(
+    let mut url = format!(
         "https://slack.com/api/search.messages?query={}&count={}&sort=timestamp&sort_dir=desc",
         urlencoding::encode(query),
         count
     );
+
+    if let Some(p) = page {
+        url.push_str(&format!("&page={}", p));
+    }
 
     // Make HTTP request
     let http_client = reqwest::Client::new();
@@ -118,6 +123,8 @@ pub async fn messages(
         total: 0,
     });
 
+    let total = messages.total;
+
     let results: Vec<SearchResult> = messages
         .matches
         .into_iter()
@@ -138,10 +145,14 @@ pub async fn messages(
         })
         .collect();
 
-    output.print_list(
-        &results,
-        &format!("Search results for '{}' ({} total)", query, messages.total),
-    );
+    let title = format!("Search results for '{}' ({} total)", query, total);
+
+    let wrapper = serde_json::json!({
+        "total": total,
+        "results": results,
+    });
+
+    output.print_list_wrapped(&results, &title, &wrapper);
 
     Ok(())
 }

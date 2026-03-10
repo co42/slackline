@@ -1,3 +1,4 @@
+use crate::error::SlackCliError;
 use colored::Colorize;
 use serde::Serialize;
 
@@ -10,10 +11,11 @@ pub enum OutputFormat {
 pub struct Output {
     format: OutputFormat,
     quiet: bool,
+    compact: bool,
 }
 
 impl Output {
-    pub fn new(json: bool, quiet: bool) -> Self {
+    pub fn new(json: bool, quiet: bool, compact: bool) -> Self {
         Self {
             format: if json {
                 OutputFormat::Json
@@ -21,13 +23,22 @@ impl Output {
                 OutputFormat::Human
             },
             quiet,
+            compact,
+        }
+    }
+
+    fn json_string<T: Serialize + ?Sized>(&self, data: &T) -> String {
+        if self.compact {
+            serde_json::to_string(data).unwrap()
+        } else {
+            serde_json::to_string_pretty(data).unwrap()
         }
     }
 
     pub fn print<T: Serialize + HumanReadable>(&self, data: &T) {
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(data).unwrap());
+                println!("{}", self.json_string(data));
             }
             OutputFormat::Human => {
                 if !self.quiet {
@@ -40,7 +51,31 @@ impl Output {
     pub fn print_list<T: Serialize + HumanReadable>(&self, items: &[T], title: &str) {
         match self.format {
             OutputFormat::Json => {
-                println!("{}", serde_json::to_string_pretty(items).unwrap());
+                println!("{}", self.json_string(items));
+            }
+            OutputFormat::Human => {
+                if !self.quiet {
+                    println!("{}", title.bold());
+                    println!("{}", "─".repeat(40));
+                    for item in items {
+                        item.print_human();
+                    }
+                    println!("\n{} items", items.len());
+                }
+            }
+        }
+    }
+
+    /// Print a JSON wrapper with items and extra top-level fields (e.g. total count).
+    pub fn print_list_wrapped<T: Serialize + HumanReadable>(
+        &self,
+        items: &[T],
+        title: &str,
+        wrapper: &serde_json::Value,
+    ) {
+        match self.format {
+            OutputFormat::Json => {
+                println!("{}", self.json_string(wrapper));
             }
             OutputFormat::Human => {
                 if !self.quiet {
@@ -69,6 +104,23 @@ impl Output {
 
     pub fn error(&self, msg: &str) {
         eprintln!("{} {}", "✗".red(), msg);
+    }
+
+    /// Print a structured error. When format is JSON, outputs {"error": "...", "code": "..."}
+    /// to stderr. Otherwise falls back to the red X human-readable output.
+    pub fn error_structured(&self, err: &SlackCliError) {
+        match self.format {
+            OutputFormat::Json => {
+                let obj = serde_json::json!({
+                    "error": err.to_string(),
+                    "code": err.code(),
+                });
+                eprintln!("{}", self.json_string(&obj));
+            }
+            OutputFormat::Human => {
+                self.error(&err.to_string());
+            }
+        }
     }
 
     pub fn is_json(&self) -> bool {
