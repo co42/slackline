@@ -5,6 +5,7 @@ edition = "2024"
 description = "Slack CLI"
 license = "MIT"
 repository = "https://github.com/co42/slackline"
+authors = ["Corentin Regal"]
 readme = "README.md"
 keywords = ["slack", "cli", "api"]
 categories = ["command-line-utilities"]
