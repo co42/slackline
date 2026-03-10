@@ -34,6 +34,7 @@ cargo install --git https://github.com/co42/slackline
 ### Search (primary tool for agents)
 ```bash
 slackline search messages '<query>' -l 20
+slackline search messages '<query>' --page 2                   # Paginate results
 ```
 
 ### Channels
@@ -43,9 +44,13 @@ slackline me channels --unread                             # Channels with unrea
 slackline me channels --unread --dms                       # Include DMs with unreads
 slackline channels list -l 50                              # All public channels
 slackline channels history <ID> -l 20                      # Read messages
+slackline channels history <ID> --after 2h --before 30m    # Time-bound history
+slackline channels history <ID> --enrich                   # Resolve user IDs to names
 slackline channels info <ID>                               # Channel details
 slackline channels members <ID>                            # List members
 slackline channels pins <ID>                               # List pinned messages
+slackline channels join <NAME_OR_ID>                       # Join a channel
+slackline channels leave <NAME_OR_ID>                      # Leave a channel
 ```
 
 ### Messages & Threads
@@ -65,6 +70,7 @@ slackline messages unpin <CH> <TS>                         # Unpin a message
 ```bash
 slackline dms list                                         # List DM conversations
 slackline dms history <DM_ID> -l 20                        # Read DM history
+slackline dms history <DM_ID> --after today --enrich       # Today's DMs with names
 slackline dms send <USER_ID> "text"                        # Send a DM
 ```
 
@@ -128,6 +134,13 @@ slackline token manifest                                   # Print read-only man
 slackline token manifest --write --watch                   # Print full manifest
 ```
 
+### Shell Completions
+```bash
+slackline completions bash                                 # Bash completions
+slackline completions zsh                                  # Zsh completions
+slackline completions fish                                 # Fish completions
+```
+
 ## Read-only Mode
 
 Set `SLACKLINE_READONLY` to disable all write operations. Write commands are hidden from help and return an error if invoked directly.
@@ -154,7 +167,8 @@ ID formats:
 ## Output Formats
 
 - Default: Human-readable
-- `--json`: Machine-readable JSON
+- `--json`: Machine-readable JSON (errors include `error` and `code` fields)
+- `--json --compact`: Non-pretty JSON (single line)
 - `-q, --quiet`: Suppress status messages
 
 ## Token Setup

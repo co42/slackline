@@ -1,5 +1,5 @@
 use crate::client::Client;
-use crate::commands::channels::{enrich_messages, MessageInfo};
+use crate::commands::channels::{MessageInfo, enrich_messages};
 use crate::error::Result;
 use crate::output::{HumanReadable, Output};
 use crate::timeparse::parse_time_expr;
@@ -91,13 +91,11 @@ pub async fn history(
         .with_limit(limit.unwrap_or(20));
 
     if let Some(after) = after {
-        let ts =
-            parse_time_expr(after).map_err(crate::error::SlackCliError::Api)?;
+        let ts = parse_time_expr(after).map_err(crate::error::SlackCliError::Api)?;
         request = request.with_oldest(SlackTs::new(ts));
     }
     if let Some(before) = before {
-        let ts =
-            parse_time_expr(before).map_err(crate::error::SlackCliError::Api)?;
+        let ts = parse_time_expr(before).map_err(crate::error::SlackCliError::Api)?;
         request = request.with_latest(SlackTs::new(ts));
     }
 

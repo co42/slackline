@@ -218,13 +218,11 @@ pub async fn history(
         .with_limit(limit.unwrap_or(20));
 
     if let Some(after) = after {
-        let ts = parse_time_expr(after)
-            .map_err(crate::error::SlackCliError::Api)?;
+        let ts = parse_time_expr(after).map_err(crate::error::SlackCliError::Api)?;
         request = request.with_oldest(SlackTs::new(ts));
     }
     if let Some(before) = before {
-        let ts = parse_time_expr(before)
-            .map_err(crate::error::SlackCliError::Api)?;
+        let ts = parse_time_expr(before).map_err(crate::error::SlackCliError::Api)?;
         request = request.with_latest(SlackTs::new(ts));
     }
 
@@ -282,10 +280,7 @@ pub async fn enrich_messages(client: &Client, messages: &mut [MessageInfo]) -> R
         match session.users_info(&request).await {
             Ok(resp) => {
                 let name = resp.user.name.unwrap_or_default();
-                let real_name = resp
-                    .user
-                    .profile
-                    .and_then(|p| p.real_name);
+                let real_name = resp.user.profile.and_then(|p| p.real_name);
                 user_map.insert(uid.clone(), (name, real_name));
             }
             Err(_) => continue, // skip users we can't resolve

@@ -498,8 +498,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Guard write commands in readonly mode
     if readonly && is_write_command(&cmd) {
-        let err =
-            slackline::SlackCliError::Config("Write operations are disabled (SLACKLINE_READONLY is set)".to_string());
+        let err = slackline::SlackCliError::Config(
+            "Write operations are disabled (SLACKLINE_READONLY is set)".to_string(),
+        );
         output.error_structured(&err);
         std::process::exit(err.exit_code());
     }
