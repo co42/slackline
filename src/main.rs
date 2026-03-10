@@ -1,4 +1,5 @@
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use clap_complete::Shell;
 use slackline::commands::watch::EventFilter;
 use slackline::{Config, Output, SlackClient, commands};
 
@@ -16,6 +17,10 @@ struct Cli {
     /// Output JSON instead of human-readable format
     #[arg(long, global = true)]
     json: bool,
+
+    /// When used with --json, output compact (non-pretty) JSON
+    #[arg(long, global = true)]
+    compact: bool,
 
     /// Suppress status messages
     #[arg(long, short, global = true)]
@@ -90,6 +95,11 @@ enum Commands {
         #[arg(long)]
         raw: bool,
     },
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
 }
 
 #[derive(Subcommand)]
@@ -112,6 +122,15 @@ enum ChannelCommands {
         /// Max messages to return [default: 20]
         #[arg(long, short, default_value = "20")]
         limit: Option<u16>,
+        /// Only messages after this time (ISO timestamp, relative like 1h/30m/2d, or 'today')
+        #[arg(long)]
+        after: Option<String>,
+        /// Only messages before this time (ISO timestamp, relative like 1h/30m/2d, or 'today')
+        #[arg(long)]
+        before: Option<String>,
+        /// Resolve user IDs to usernames and real names
+        #[arg(long)]
+        enrich: bool,
     },
     /// List channel member user IDs
     Members {
@@ -124,6 +143,16 @@ enum ChannelCommands {
     /// List pinned messages in channel
     Pins {
         /// Channel ID (e.g., C1RCG46LS)
+        channel: String,
+    },
+    /// Join a channel
+    Join {
+        /// Channel name or ID
+        channel: String,
+    },
+    /// Leave a channel
+    Leave {
+        /// Channel name or ID
         channel: String,
     },
 }
@@ -238,6 +267,15 @@ enum DmCommands {
         /// Max messages to return [default: 20]
         #[arg(long, short)]
         limit: Option<u16>,
+        /// Only messages after this time (ISO timestamp, relative like 1h/30m/2d, or 'today')
+        #[arg(long)]
+        after: Option<String>,
+        /// Only messages before this time (ISO timestamp, relative like 1h/30m/2d, or 'today')
+        #[arg(long)]
+        before: Option<String>,
+        /// Resolve user IDs to usernames and real names
+        #[arg(long)]
+        enrich: bool,
     },
     /// Send a direct message to a user
     Send {
@@ -333,6 +371,9 @@ enum SearchCommands {
         /// Max results to return [default: 20]
         #[arg(long, short)]
         limit: Option<u16>,
+        /// Page number (1-indexed)
+        #[arg(long, short)]
+        page: Option<u32>,
     },
 }
 
@@ -382,6 +423,7 @@ const WRITE_MESSAGE_CMDS: &[&str] = &["send", "react", "unreact", "pin", "unpin"
 const WRITE_DM_CMDS: &[&str] = &["send"];
 const WRITE_FILE_CMDS: &[&str] = &["upload"];
 const WRITE_ME_CMDS: &[&str] = &["set-status", "clear-status"];
+const WRITE_CHANNEL_CMDS: &[&str] = &["join", "leave"];
 
 fn hide_write_subcommands(mut cmd: clap::Command) -> clap::Command {
     for name in WRITE_MESSAGE_CMDS {
@@ -395,6 +437,9 @@ fn hide_write_subcommands(mut cmd: clap::Command) -> clap::Command {
     }
     for name in WRITE_ME_CMDS {
         cmd = cmd.mut_subcommand("me", |m| m.mut_subcommand(name, |s| s.hide(true)));
+    }
+    for name in WRITE_CHANNEL_CMDS {
+        cmd = cmd.mut_subcommand("channels", |m| m.mut_subcommand(name, |s| s.hide(true)));
     }
     cmd
 }
@@ -414,6 +459,8 @@ fn is_write_command(cmd: &Commands) -> bool {
             command: FileCommands::Upload { .. }
         } | Commands::Me {
             command: MeCommands::SetStatus { .. } | MeCommands::ClearStatus
+        } | Commands::Channels {
+            command: ChannelCommands::Join { .. } | ChannelCommands::Leave { .. }
         }
     )
 }
@@ -430,7 +477,7 @@ async fn main() -> anyhow::Result<()> {
 
     let matches = cmd.get_matches();
     let cli = Cli::from_arg_matches(&matches)?;
-    let output = Output::new(cli.json, cli.quiet);
+    let output = Output::new(cli.json, cli.quiet, cli.compact);
 
     // Print help if no command provided
     let Some(cmd) = cli.command else {
@@ -442,10 +489,19 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     };
 
+    // Handle completions (no auth required)
+    if let Commands::Completions { shell } = &cmd {
+        let mut cmd = Cli::command();
+        clap_complete::generate(*shell, &mut cmd, "slackline", &mut std::io::stdout());
+        return Ok(());
+    }
+
     // Guard write commands in readonly mode
     if readonly && is_write_command(&cmd) {
-        output.error("Write operations are disabled (SLACKLINE_READONLY is set)");
-        std::process::exit(1);
+        let err =
+            slackline::SlackCliError::Config("Write operations are disabled (SLACKLINE_READONLY is set)".to_string());
+        output.error_structured(&err);
+        std::process::exit(err.exit_code());
     }
 
     // Handle token create/manifest commands (no auth required)
@@ -461,8 +517,8 @@ async fn main() -> anyhow::Result<()> {
         };
         if let Some(result) = result {
             if let Err(e) = result {
-                output.error(&e.to_string());
-                std::process::exit(1);
+                output.error_structured(&e);
+                std::process::exit(e.exit_code());
             }
             return Ok(());
         }
@@ -490,8 +546,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .await
         {
-            output.error(&e.to_string());
-            std::process::exit(1);
+            output.error_structured(&e);
+            std::process::exit(e.exit_code());
         }
         return Ok(());
     }
@@ -512,14 +568,35 @@ async fn main() -> anyhow::Result<()> {
             ChannelCommands::Info { channel } => {
                 commands::channels::info(&client, &output, &channel).await
             }
-            ChannelCommands::History { channel, limit } => {
-                commands::channels::history(&client, &output, &channel, limit).await
+            ChannelCommands::History {
+                channel,
+                limit,
+                after,
+                before,
+                enrich,
+            } => {
+                commands::channels::history(
+                    &client,
+                    &output,
+                    &channel,
+                    limit,
+                    after.as_deref(),
+                    before.as_deref(),
+                    enrich,
+                )
+                .await
             }
             ChannelCommands::Members { channel, limit } => {
                 commands::channels::members(&client, &output, &channel, limit).await
             }
             ChannelCommands::Pins { channel } => {
                 commands::channels::pins(&client, &output, &channel).await
+            }
+            ChannelCommands::Join { channel } => {
+                commands::channels::join(&client, &output, &channel).await
+            }
+            ChannelCommands::Leave { channel } => {
+                commands::channels::leave(&client, &output, &channel).await
             }
         },
         Commands::Users { command } => match command {
@@ -568,8 +645,23 @@ async fn main() -> anyhow::Result<()> {
         },
         Commands::Dms { command } => match command {
             DmCommands::List { limit } => commands::dms::list(&client, &output, limit).await,
-            DmCommands::History { dm_channel, limit } => {
-                commands::dms::history(&client, &output, &dm_channel, limit).await
+            DmCommands::History {
+                dm_channel,
+                limit,
+                after,
+                before,
+                enrich,
+            } => {
+                commands::dms::history(
+                    &client,
+                    &output,
+                    &dm_channel,
+                    limit,
+                    after.as_deref(),
+                    before.as_deref(),
+                    enrich,
+                )
+                .await
             }
             DmCommands::Send { user, text } => {
                 commands::dms::send(&client, &output, &user, &text).await
@@ -615,16 +707,16 @@ async fn main() -> anyhow::Result<()> {
             MeCommands::ClearStatus => commands::me::clear_status(&client, &output).await,
         },
         Commands::Search { command } => match command {
-            SearchCommands::Messages { query, limit } => {
-                commands::search::messages(&client, &output, &query, limit).await
+            SearchCommands::Messages { query, limit, page } => {
+                commands::search::messages(&client, &output, &query, limit, page).await
             }
         },
-        Commands::Watch { .. } => unreachable!("handled above"),
+        Commands::Watch { .. } | Commands::Completions { .. } => unreachable!("handled above"),
     };
 
     if let Err(e) = result {
-        output.error(&e.to_string());
-        std::process::exit(1);
+        output.error_structured(&e);
+        std::process::exit(e.exit_code());
     }
 
     Ok(())

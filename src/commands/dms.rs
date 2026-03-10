@@ -1,7 +1,9 @@
 use crate::client::Client;
+use crate::commands::channels::{enrich_messages, MessageInfo};
 use crate::error::Result;
 use crate::output::{HumanReadable, Output};
-use chrono::{DateTime, Utc};
+use crate::timeparse::parse_time_expr;
+use chrono::DateTime;
 use colored::Colorize;
 use serde::Serialize;
 use slack_morphism::prelude::*;
@@ -24,29 +26,6 @@ impl HumanReadable for DmConversation {
             user.green(),
             status.dimmed()
         );
-    }
-}
-
-#[derive(Debug, Serialize)]
-pub struct DmMessage {
-    pub ts: String,
-    pub user: Option<String>,
-    pub text: String,
-    pub timestamp: Option<DateTime<Utc>>,
-}
-
-impl HumanReadable for DmMessage {
-    fn print_human(&self) {
-        let time = self
-            .timestamp
-            .map(|t| t.format("%Y-%m-%d %H:%M").to_string())
-            .unwrap_or_else(|| self.ts.clone());
-
-        let user = self.user.as_deref().unwrap_or("unknown");
-
-        println!("{} {}:", time.dimmed(), user.green());
-        println!("  {}", self.text);
-        println!();
     }
 }
 
@@ -100,31 +79,54 @@ pub async fn history(
     output: &Output,
     dm_channel: &str,
     limit: Option<u16>,
+    after: Option<&str>,
+    before: Option<&str>,
+    enrich: bool,
 ) -> Result<()> {
     let session = client.session();
     let channel_id = client.resolve_channel(dm_channel).await?;
 
-    let request = SlackApiConversationsHistoryRequest::new()
+    let mut request = SlackApiConversationsHistoryRequest::new()
         .with_channel(channel_id)
         .with_limit(limit.unwrap_or(20));
 
+    if let Some(after) = after {
+        let ts =
+            parse_time_expr(after).map_err(crate::error::SlackCliError::Api)?;
+        request = request.with_oldest(SlackTs::new(ts));
+    }
+    if let Some(before) = before {
+        let ts =
+            parse_time_expr(before).map_err(crate::error::SlackCliError::Api)?;
+        request = request.with_latest(SlackTs::new(ts));
+    }
+
     let response = session.conversations_history(&request).await?;
 
-    let messages: Vec<DmMessage> = response
+    let mut messages: Vec<MessageInfo> = response
         .messages
         .into_iter()
         .map(|m| {
             let ts_float: f64 = m.origin.ts.0.parse().unwrap_or(0.0);
             let timestamp = DateTime::from_timestamp(ts_float as i64, 0);
 
-            DmMessage {
+            MessageInfo {
                 ts: m.origin.ts.0,
                 user: m.sender.user.map(|u| u.0),
                 text: m.content.text.unwrap_or_default(),
                 timestamp,
+                thread_ts: m.origin.thread_ts.map(|t| t.0),
+                reply_count: m.parent.reply_count.map(|c| c as u64),
+                latest_reply: m.parent.latest_reply.map(|t| t.0),
+                username: None,
+                real_name: None,
             }
         })
         .collect();
+
+    if enrich {
+        enrich_messages(client, &mut messages).await?;
+    }
 
     output.print_list(&messages, &format!("DM history in {}", dm_channel));
 

@@ -3,6 +3,7 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod output;
+pub mod timeparse;
 
 pub use client::Client as SlackClient;
 pub use config::Config;
