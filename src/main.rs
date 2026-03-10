@@ -18,9 +18,9 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
-    /// When used with --json, output compact (non-pretty) JSON
+    /// When used with --json, output pretty-printed JSON
     #[arg(long, global = true)]
-    compact: bool,
+    pretty: bool,
 
     /// Suppress status messages
     #[arg(long, short, global = true)]
@@ -477,7 +477,7 @@ async fn main() -> anyhow::Result<()> {
 
     let matches = cmd.get_matches();
     let cli = Cli::from_arg_matches(&matches)?;
-    let output = Output::new(cli.json, cli.quiet, cli.compact);
+    let output = Output::new(cli.json, cli.quiet, cli.pretty);
 
     // Print help if no command provided
     let Some(cmd) = cli.command else {

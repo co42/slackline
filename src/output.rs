@@ -11,11 +11,11 @@ pub enum OutputFormat {
 pub struct Output {
     format: OutputFormat,
     quiet: bool,
-    compact: bool,
+    pretty: bool,
 }
 
 impl Output {
-    pub fn new(json: bool, quiet: bool, compact: bool) -> Self {
+    pub fn new(json: bool, quiet: bool, pretty: bool) -> Self {
         Self {
             format: if json {
                 OutputFormat::Json
@@ -23,15 +23,15 @@ impl Output {
                 OutputFormat::Human
             },
             quiet,
-            compact,
+            pretty,
         }
     }
 
     fn json_string<T: Serialize + ?Sized>(&self, data: &T) -> String {
-        if self.compact {
-            serde_json::to_string(data).unwrap()
-        } else {
+        if self.pretty {
             serde_json::to_string_pretty(data).unwrap()
+        } else {
+            serde_json::to_string(data).unwrap()
         }
     }
 

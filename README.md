@@ -167,8 +167,8 @@ ID formats:
 ## Output Formats
 
 - Default: Human-readable
-- `--json`: Machine-readable JSON (errors include `error` and `code` fields)
-- `--json --compact`: Non-pretty JSON (single line)
+- `--json`: Machine-readable JSON, compact by default (errors include `error` and `code` fields)
+- `--json --pretty`: Pretty-printed JSON
 - `-q, --quiet`: Suppress status messages
 
 ## Token Setup
