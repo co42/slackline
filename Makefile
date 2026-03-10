@@ -52,7 +52,7 @@ release:
 			$(HOMEBREW_TAP)/Formula/slackline.rb > $(HOMEBREW_TAP)/Formula/slackline.rb.tmp && \
 		mv $(HOMEBREW_TAP)/Formula/slackline.rb.tmp $(HOMEBREW_TAP)/Formula/slackline.rb
 	@# Commit and push homebrew tap
-	@cd $(HOMEBREW_TAP) && git add -A && git commit -m "slackline $(VERSION)" && git push
+	@cd $(HOMEBREW_TAP) && git add -A && git commit -m "slackline $(VERSION)" && git pull --rebase && git push
 	@echo ""
 	@echo "=== Release v$(VERSION) complete! ==="
 	@echo "  - Tagged and pushed slackline"
