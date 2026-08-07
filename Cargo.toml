@@ -19,16 +19,13 @@ colored = "3"
 dotenvy = "0.15"
 futures = "0.3"
 hyper = "1"
-hyper-rustls = { version = "0.27", features = ["http2"] }
+hyper-rustls = { version = "0.27", default-features = false, features = ["http2", "ring", "rustls-native-certs", "native-tokio", "logging"] }
 mime_guess = "2"
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "charset", "http2", "system-proxy"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-slack-morphism = { version = "2", features = ["hyper"] }
+slack-morphism = { version = "2.24", features = ["hyper"] }
 thiserror = "2"
 http = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 urlencoding = "2"
-
-[patch.crates-io]
-slack-morphism = { git = "https://github.com/co42/slack-morphism-rust", rev = "e2d7136" }
