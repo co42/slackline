@@ -389,3 +389,54 @@ pub async fn leave(client: &Client, output: &Output, channel: &str) -> Result<()
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use slack_morphism::prelude::*;
+
+    /// A `conversations.history` payload that holds a message subtype slack-morphism
+    /// does not name must still deserialize. The whole channel is unreadable otherwise.
+    #[test]
+    fn history_parses_unknown_message_subtype() {
+        let payload = r#"{
+            "ok": true,
+            "messages": [
+                {"type": "message", "subtype": "channel_tab_added", "ts": "1786101111.549469", "user": "U060MNLR2EQ", "text": ""},
+                {"type": "message", "subtype": "channel_convert_to_public", "ts": "1786101112.000100", "user": "U060MNLR2EQ", "text": ""},
+                {"type": "message", "ts": "1786101113.000200", "user": "U060MNLR2EQ", "text": "plain message"}
+            ],
+            "has_more": false
+        }"#;
+
+        let response: SlackApiConversationsHistoryResponse =
+            serde_json::from_str(payload).expect("unknown subtypes must not fail the whole batch");
+
+        assert_eq!(response.messages.len(), 3);
+    }
+
+    /// Slack sends block types that slack-morphism may not name yet. `table` was one.
+    #[test]
+    fn history_parses_table_block() {
+        let payload = r#"{
+            "ok": true,
+            "messages": [
+                {
+                    "type": "message",
+                    "ts": "1786101114.000300",
+                    "user": "U060MNLR2EQ",
+                    "text": "FYI 2 new services in shared-infra",
+                    "blocks": [
+                        {"type": "table", "rows": []},
+                        {"type": "section", "text": {"type": "mrkdwn", "text": "after the table"}}
+                    ]
+                }
+            ],
+            "has_more": false
+        }"#;
+
+        let response: SlackApiConversationsHistoryResponse =
+            serde_json::from_str(payload).expect("a table block must not fail the whole batch");
+
+        assert_eq!(response.messages.len(), 1);
+    }
+}

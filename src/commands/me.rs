@@ -137,7 +137,7 @@ pub async fn channels(
         let results: Vec<Option<bool>> = join_all(futures).await;
 
         // Update channels with unread status and filter
-        for (channel, has_unread) in channels.iter_mut().zip(results.into_iter()) {
+        for (channel, has_unread) in channels.iter_mut().zip(results) {
             channel.has_unread = has_unread;
         }
 
