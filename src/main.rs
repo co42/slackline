@@ -368,7 +368,7 @@ enum SearchCommands {
     Messages {
         /// Search query (Slack search syntax)
         query: String,
-        /// Max results to return [default: 20]
+        /// Results per page, 100 at most [default: 20]
         #[arg(long, short)]
         limit: Option<u16>,
         /// Page number (1-indexed)
