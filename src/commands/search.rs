@@ -74,6 +74,17 @@ impl HumanReadable for SearchResult {
     }
 }
 
+/// Highest `count` that `search.messages` accepts. Above this Slack ignores the
+/// value and returns its own default of 20, so the caller gets fewer results.
+const MAX_COUNT: u16 = 100;
+
+const DEFAULT_COUNT: u16 = 20;
+
+/// Results per page to request. Values above `MAX_COUNT` come back as `MAX_COUNT`.
+fn page_count(limit: Option<u16>) -> u16 {
+    limit.unwrap_or(DEFAULT_COUNT).min(MAX_COUNT)
+}
+
 /// Search messages using Slack search API
 pub async fn messages(
     client: &Client,
@@ -83,7 +94,13 @@ pub async fn messages(
     page: Option<u32>,
 ) -> Result<()> {
     let token = client.token();
-    let count = limit.unwrap_or(20);
+    let count = page_count(limit);
+
+    if limit.is_some_and(|l| l > MAX_COUNT) {
+        output.status(&format!(
+            "Slack returns at most {MAX_COUNT} results per page. Use --page to read further."
+        ));
+    }
 
     // Build search URL
     let mut url = format!(
@@ -155,4 +172,30 @@ pub async fn messages(
     output.print_list_wrapped(&results, &title, &wrapper);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_count_defaults_to_20_when_no_limit_given() {
+        assert_eq!(page_count(None), 20);
+    }
+
+    #[test]
+    fn page_count_passes_through_values_slack_accepts() {
+        assert_eq!(page_count(Some(1)), 1);
+        assert_eq!(page_count(Some(50)), 50);
+        assert_eq!(page_count(Some(MAX_COUNT)), MAX_COUNT);
+    }
+
+    /// Slack answers a `count` above 100 with its own default of 20, so an unclamped
+    /// request returns fewer results than a smaller one. Clamping keeps the page full.
+    #[test]
+    fn page_count_clamps_above_the_slack_maximum() {
+        assert_eq!(page_count(Some(101)), MAX_COUNT);
+        assert_eq!(page_count(Some(200)), MAX_COUNT);
+        assert_eq!(page_count(Some(u16::MAX)), MAX_COUNT);
+    }
 }
