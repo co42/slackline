@@ -20,18 +20,22 @@ release:
 	@echo "=== Preparing release v$(VERSION) ==="
 	@# Update Cargo.toml version
 	@sed -i '' 's/^version = ".*"/version = "$(VERSION)"/' Cargo.toml
-	@# Rebuild lock file
-	@cargo generate-lockfile
+	@# Update only slackline's own entry in the lock file
+	@cargo check -q
 	@# Commit and tag slackline
-	@git add -A
-	@git commit -m "chore: release v$(VERSION)" || true
+	@git add Cargo.toml Cargo.lock
+	@git commit -m "chore: release v$(VERSION)"
 	@git tag "v$(VERSION)"
-	@git push && git push --tags
+	@git push && git push origin "v$(VERSION)"
 	@echo ""
 	@echo "=== Waiting for GitHub Actions to build release ==="
-	@# Wait for workflow to start and get run ID
-	@sleep 10
-	@RUN_ID=$$(gh run list -R $(REPO) --branch v$(VERSION) --limit 1 --json databaseId -q '.[0].databaseId') && \
+	@# Poll until the workflow run for the tagged commit shows up
+	@SHA=$$(git rev-parse HEAD); RUN_ID=""; \
+		for i in $$(seq 1 30); do \
+			RUN_ID=$$(gh run list -R $(REPO) --branch v$(VERSION) --json databaseId,headSha -q ".[] | select(.headSha == \"$$SHA\") | .databaseId" | head -1); \
+			[ -n "$$RUN_ID" ] && break; sleep 5; \
+		done; \
+		[ -n "$$RUN_ID" ] || { echo "Release workflow run not found"; exit 1; }; \
 		echo "Watching workflow run $$RUN_ID..." && \
 		gh run watch $$RUN_ID -R $(REPO) --exit-status || (echo "Release build failed!" && exit 1)
 	@echo ""
