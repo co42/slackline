@@ -11,7 +11,7 @@ const ABOUT: &str = "Slack CLI.";
 #[command(version)]
 struct Cli {
     /// Slack token (or set SLACK_TOKEN env var)
-    #[arg(long, env = "SLACK_TOKEN")]
+    #[arg(long, env = "SLACK_TOKEN", hide_env_values = true)]
     token: Option<String>,
 
     /// Output JSON instead of human-readable format
