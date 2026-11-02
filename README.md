@@ -11,7 +11,7 @@ brew install co42/slackline/slackline
 # Cargo
 cargo install --git https://github.com/co42/slackline
 
-# Binary releases (macOS ARM, macOS Intel, Linux)
+# Binary releases (macOS ARM, macOS Intel, Linux, Windows x64)
 # https://github.com/co42/slackline/releases
 ```
 
