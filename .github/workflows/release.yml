@@ -19,8 +19,13 @@ jobs:
             os: macos-latest
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      ASSET: slackline-${{ github.ref_name }}-${{ matrix.target }}
 
     steps:
       - uses: actions/checkout@v4
@@ -34,16 +39,19 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package
-        run: |
-          cd target/${{ matrix.target }}/release
-          tar czf slackline-${{ github.ref_name }}-${{ matrix.target }}.tar.gz slackline
-          mv slackline-${{ github.ref_name }}-${{ matrix.target }}.tar.gz ../../../
+        if: runner.os != 'Windows'
+        run: tar czf "$ASSET.tar.gz" -C target/${{ matrix.target }}/release slackline
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/slackline.exe -DestinationPath "$env:ASSET.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: slackline-${{ matrix.target }}
-          path: slackline-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          path: ${{ env.ASSET }}.*
 
   release:
     needs: build
