@@ -42,6 +42,9 @@ slackline search messages '<query>' --page 2                   # Paginate result
 slackline me channels                                      # Channels you're in
 slackline me channels --unread                             # Channels with unread messages
 slackline me channels --unread --dms                       # Include DMs with unreads
+slackline me threads                                       # Followed threads with unread replies
+slackline me threads --all --since 2d                      # All followed threads active in 2 days
+slackline me threads --all --since 2026-11-01 --until 2026-11-08  # Latest reply in a date range
 slackline channels list -l 50                              # All public channels
 slackline channels history <ID> -l 20                      # Read messages
 slackline channels history <ID> --after 2h --before 30m    # Time-bound history

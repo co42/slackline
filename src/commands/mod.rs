@@ -4,6 +4,7 @@ pub mod files;
 pub mod me;
 pub mod messages;
 pub mod search;
+pub mod threads;
 pub mod token;
 pub mod users;
 pub mod watch;

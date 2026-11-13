@@ -343,6 +343,18 @@ enum MeCommands {
         #[arg(long, short)]
         unread: bool,
     },
+    /// List threads you follow with unread replies (like the sidebar "Threads" view)
+    Threads {
+        /// Only threads with a reply since (ISO date, 1h/2d, today) [default: 14d]
+        #[arg(long, default_value = "14d")]
+        since: String,
+        /// Only threads whose latest reply is before (ISO date, 1h/2d, today)
+        #[arg(long)]
+        until: Option<String>,
+        /// Include threads you have already read
+        #[arg(long, short)]
+        all: bool,
+    },
     /// Set your Slack status
     SetStatus {
         /// Status text
@@ -701,6 +713,9 @@ async fn main() -> anyhow::Result<()> {
         Commands::Me { command } => match command {
             MeCommands::Channels { limit, dms, unread } => {
                 commands::me::channels(&client, &output, limit, dms, unread).await
+            }
+            MeCommands::Threads { since, until, all } => {
+                commands::threads::threads(&client, &output, &since, until.as_deref(), all).await
             }
             MeCommands::SetStatus { text, emoji } => {
                 commands::me::set_status(&client, &output, &text, emoji.as_deref()).await
